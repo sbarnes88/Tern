@@ -1,0 +1,55 @@
+page "Layout"
+
+// gap, margin, align, grow, maxwidth and grid
+style card { background #f6f8fa padding 14 radius 10 border #d0d7de }
+
+state cards: Int = 6
+
+view {
+  heading "Layout"
+
+  // align spread pushes the items to opposite ends
+  row align spread padding 12 background #1f3a5f radius 8 {
+    text "Tern Shop" bold color white size 16
+    row gap 18 {
+      text "Home" color white
+      text "Cart" color white
+    }
+  }
+
+  // grow gives each block a share of the row: here 1 part and 3 parts
+  row gap 12 {
+    column grow 1 style card {
+      text "Side" bold
+      text "1 part" color gray
+    }
+    column grow 3 style card {
+      text "Main" bold
+      text "3 parts" color gray
+    }
+  }
+
+  // a grid lays its children out in equal columns
+  row {
+    button "Fewer" -> { if cards > 1 { cards = cards - 1 } }
+    button "More" -> { if cards < 12 { cards = cards + 1 } }
+  }
+  grid 3 gap 10 {
+    for i in range(cards) {
+      column style card gap 2 {
+        text "Card " + toText(i + 1) bold
+        text "in a grid" color gray size 10
+      }
+    }
+  }
+
+  // align center centers the children INSIDE a column. To put the card itself in the middle of
+  // the page, wrap it in another column that has align center. maxwidth keeps the card narrow.
+  column align center {
+    column align center gap 6 maxwidth 360 style card {
+      heading "Centered" size 16
+      text "A narrow card in the middle of the page." color gray
+      button "OK" -> cards = 6
+    }
+  }
+}

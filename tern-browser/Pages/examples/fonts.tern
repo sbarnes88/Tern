@@ -1,0 +1,20 @@
+page "Fonts"
+
+state pick: Font = serif
+
+view {
+  heading "Fonts" font display
+  text "sans: The quick brown fox" font sans
+  text "serif: The quick brown fox" font serif
+  text "mono: The quick brown fox" font mono
+  text "display: The quick brown fox" font display size 18
+  text "hand: The quick brown fox" font hand size 20
+  text "rounded: The quick brown fox" font rounded
+  divider
+  text "Pick a font below" font pick size 22
+  row {
+    button "serif" -> pick = serif
+    button "hand" -> pick = hand
+    button "mono" -> pick = mono
+  }
+}

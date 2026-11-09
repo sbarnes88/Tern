@@ -1,0 +1,85 @@
+page "Desserts"
+
+// A data table: sortable columns (sortOrder), pages of four rows (slice),
+// and a checkbox in the first column to pick rows.
+struct Dessert {
+  name: Text
+  calories: Int
+  fat: Int
+}
+
+state rows: List<Dessert> = [
+  Dessert(name: "Cupcake", calories: 305, fat: 4),
+  Dessert(name: "Donut", calories: 452, fat: 25),
+  Dessert(name: "Eclair", calories: 262, fat: 16),
+  Dessert(name: "Froyo", calories: 159, fat: 6),
+  Dessert(name: "Gingerbread", calories: 356, fat: 16),
+  Dessert(name: "Honeycomb", calories: 408, fat: 3),
+  Dessert(name: "Ice cream", calories: 237, fat: 9),
+  Dessert(name: "Jelly bean", calories: 375, fat: 0),
+  Dessert(name: "KitKat", calories: 518, fat: 26)
+]
+state picked: List<Bool> = [false, false, false, false, false, false, false, false, false]
+state sortBy: Text = "none"
+state ascending: Bool = true
+state pageNo: Int = 0
+
+// the positions of the rows, in the order they should be shown
+fn order(): List<Int> {
+  if sortBy == "none" { return range(len(rows)) }
+  let keys: List<Int> = []
+  for d in rows {
+    if sortBy == "calories" { keys = append(keys, d.calories) } else { keys = append(keys, d.fat) }
+  }
+  if ascending { return sortOrder(keys) }
+  return reverse(sortOrder(keys))
+}
+
+// tapping a column sorts by it; tapping the same column again flips the direction
+fn sortOn(which: Text) {
+  if sortBy == which { ascending = !ascending } else { sortBy = which ascending = true }
+  pageNo = 0
+}
+
+fn arrow(which: Text): Text {
+  if sortBy != which { return "" }
+  if ascending { return " ▲" }
+  return " ▼"
+}
+
+fn lastShown(): Int {
+  let last = pageNo * 4 + 4
+  if last > len(rows) { return len(rows) }
+  return last
+}
+
+fn pageCount(): Int { return (len(rows) + 3) / 4 }
+
+fn pickedCount(): Int {
+  let n = 0
+  for p in picked { if p { n = n + 1 } }
+  return n
+}
+
+view {
+  heading "Desserts"
+  text "Tap Calories or Fat to sort; tap again to flip the direction. Tick rows to pick them." color gray
+  table height 260 padding 9 border #1f3a5f resizable {
+    header "Pick" background #1f3a5f color white, "Dessert" background #1f3a5f color white, button "Calories" + arrow("calories") background #1f3a5f color white radius 0 border #1f3a5f -> sortOn("calories"), button "Fat" + arrow("fat") background #1f3a5f color white radius 0 border #1f3a5f -> sortOn("fat")
+    for i in slice(order(), pageNo * 4, pageNo * 4 + 4) {
+      cells checkbox picked[i] -> picked = setAt(picked, i, !picked[i]), rows[i].name bold when picked[i], toText(rows[i].calories), toText(rows[i].fat)
+    }
+    cells "Picked: " + toText(pickedCount()) span 4 background #dbe7fb color #1f3a5f bold
+  }
+  row {
+    if pageNo > 0 {
+      button "Previous" background #0b57d0 color white radius 20 padding 12 bold -> pageNo = pageNo - 1
+    }
+    text "Page " + toText(pageNo + 1) + " of " + toText(pageCount())
+    if pageNo < pageCount() - 1 {
+      button "Next" background #0b57d0 color white radius 20 padding 12 bold -> pageNo = pageNo + 1
+    }
+    button "Unsort" color #b3261e border #b3261e radius 20 padding 12 -> { sortBy = "none" ascending = true pageNo = 0 }
+  }
+  text "Rows " + toText(pageNo * 4 + 1) + " to " + toText(lastShown()) + " of " + toText(len(rows)) size 11 color gray
+}

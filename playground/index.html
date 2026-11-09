@@ -1,0 +1,3423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tern Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Playfair+Display:wght@400;700&family=Caveat:wght@400;700&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* Plan: a quiet tool in cool blue-greys. Code on one side, the page it makes on the other.
+   Phone: one pane at a time behind three tabs. Wide: code and page side by side. */
+:root {
+  --bg: #eef1f6; --panel: #ffffff; --ink: #1b2430; --muted: #5b6676; --line: #d5dbe6;
+  --accent: #0b57d0; --accent-ink: #ffffff; --err: #b3261e; --err-bg: #fdecea; --ok: #1a7f37;
+  --code-bg: #ffffff; --code-ink: #1b2430; --chip: #e4e9f2;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1219; --panel: #151c26; --ink: #e6ebf3; --muted: #94a0b4; --line: #2a3445;
+    --accent: #6ea8ff; --accent-ink: #0d1219; --err: #ff8a80; --err-bg: #3a1c1a; --ok: #5fd08a;
+    --code-bg: #0f151e; --code-ink: #e6ebf3; --chip: #202a39; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1219; --panel: #151c26; --ink: #e6ebf3; --muted: #94a0b4; --line: #2a3445;
+  --accent: #6ea8ff; --accent-ink: #0d1219; --err: #ff8a80; --err-bg: #3a1c1a; --ok: #5fd08a;
+  --code-bg: #0f151e; --code-ink: #e6ebf3; --chip: #202a39; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--sans); display: flex; flex-direction: column; }
+button, select, textarea, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; }
+.mark { font: 600 20px var(--mono); letter-spacing: -.02em; }
+.mark small { font: 400 11px var(--mono); color: var(--muted); margin-left: 4px; }
+.spacer { flex: 1; }
+select, .btn { min-height: 40px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 0 12px; }
+.btn { cursor: pointer; }
+.btn:active { background: var(--chip); }
+select { max-width: 46vw; }
+
+nav { display: flex; gap: 6px; padding: 0 16px 8px; }
+nav button { flex: 1; min-width: 0; padding: 0 4px; min-height: 44px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; font-weight: 600; color: var(--muted); cursor: pointer; }
+nav button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+main { flex: 1; min-height: 0; display: flex; padding: 0 16px 12px; gap: 12px; }
+.pane { flex: 1; min-width: 0; min-height: 0; display: none; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+body[data-view="code"] .pane-code, body[data-view="page"] .pane-page, body[data-view="help"] .pane-help, body[data-view="images"] .pane-images, body[data-view="libs"] .pane-libs { display: flex; }
+
+/* code pane */
+.chips { display: flex; gap: 6px; padding: 8px; overflow-x: auto; border-bottom: 1px solid var(--line); flex: none; }
+.chips button { flex: none; min-width: 40px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--chip); font: 600 15px var(--mono); cursor: pointer; }
+.chips select { min-height: 36px; font-size: 14px; flex: none; }
+textarea#code { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; padding: 12px; background: var(--code-bg); color: var(--code-ink); font: 14px/1.55 var(--mono); tab-size: 2; white-space: pre; overflow: auto; }
+textarea#code:focus-visible { outline-offset: -2px; }
+.status { flex: none; border-top: 1px solid var(--line); padding: 8px 12px; font-size: 13px; display: flex; gap: 8px; align-items: baseline; min-height: 38px; }
+.status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; align-self: center; }
+.status.bad { background: var(--err-bg); color: var(--err); cursor: pointer; }
+.status.bad .dot { background: var(--err); }
+.status .msg { overflow-wrap: anywhere; }
+
+/* page pane: always light, like paper in a browser */
+.bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font: 12px var(--mono); color: var(--muted); }
+.bar .bk { flex: none; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--chip); font: 600 20px/1 var(--sans); cursor: pointer; color: var(--ink); }
+.bar .bk:disabled { opacity: .35; cursor: default; }
+.bar .clr { flex: none; min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--chip); font: 600 12px var(--sans); color: var(--ink); cursor: pointer; }
+.bar .addr { flex: 1; background: var(--chip); border-radius: 999px; padding: 4px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.paper { flex: 1; min-height: 0; overflow: auto; background: #ffffff; color: #1f2328; padding: 20px 18px 28px; font: 16px/1.5 var(--sans); }
+.pane-page { position: relative; }
+.mlayer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15, 23, 42, .5); border-radius: 0 0 12px 12px; }
+.mlayer[hidden] { display: none; }
+.mdlg { background: #fff; color: #1f2328; border-radius: 12px; padding: 20px; width: 22rem; max-width: 100%; max-height: 100%; overflow: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 10px; font: 16px/1.5 var(--sans); }
+.mdlg > * { min-width: 0; }
+.mdlg:focus { outline: none; }
+.page { display: flex; flex-direction: column; gap: 10px; max-width: 46rem; align-items: stretch; }
+.page > * { min-width: 0; }
+.t { overflow-wrap: anywhere; white-space: pre-wrap; border-radius: 4px; }
+.t.bullet { display: flex; gap: 10px; padding-left: 4px; }
+.t.bullet::before { content: '\2022'; flex: none; }
+.t.bullet span { min-width: 0; }
+.row, .col { display: flex; gap: 8px; }
+.row { flex-wrap: wrap; align-items: center; }
+.row > * { flex: var(--grow, 0 1 auto); }
+.col.aligned > * { align-self: auto; }   /* buttons, links and images start left on their own; a column's align overrides that */
+.grid { display: grid; gap: 8px; align-items: start; }
+.grid > * { min-width: 0; }
+.col { flex-direction: column; }
+.divider { border: 0; border-top: 1px solid #d0d7de; margin: 4px 0; width: 100%; }
+.tbtn { align-self: flex-start; min-height: 40px; padding: 0 14px; border: 1px solid #c5cbd6; background: #eef1f6; color: #1f2328; border-radius: 8px; cursor: pointer; font: inherit; }
+.tbtn { -webkit-tap-highlight-color: transparent; }
+.tbtn:active { filter: brightness(.94); }
+.tin { min-height: 40px; padding: 0 12px; border: 1px solid #8c959f; border-radius: 6px; background: #fff; color: #1f2328; font-size: 16px; max-width: 100%; width: 18rem; }
+.tt td input.tin { width: 100%; min-width: 9rem; box-sizing: border-box; }
+.tta { display: block; box-sizing: border-box; width: 18rem; max-width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid #8c959f; border-radius: 6px; background: #fff; color: #1f2328; font: 16px/1.4 var(--sans); resize: vertical; align-self: flex-start; }
+.tslider { width: 18rem; max-width: 100%; min-height: 40px; align-self: flex-start; accent-color: #0b57d0; }
+button:disabled, input:disabled, select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
+.tcheck:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.tsel { min-height: 40px; padding: 0 10px; border: 1px solid #8c959f; border-radius: 6px; background: #fff; color: #1f2328; font-size: 16px; max-width: 100%; align-self: flex-start; }
+.tt td .tsel { width: 100%; min-width: 7rem; }
+.tradio { display: flex; flex-direction: column; align-self: flex-start; }
+.tcheck { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; align-self: flex-start; }
+.tcheck input { width: 22px; height: 22px; margin: 0; accent-color: #0b57d0; }
+.tlink { color: #0b57d0; cursor: pointer; text-decoration: underline; align-self: flex-start; }
+.para { overflow-wrap: anywhere; }
+.para .sp { border-radius: 3px; }
+.tscroll { overflow: auto; max-width: 100%; }
+.tt th { position: relative; }
+.colgrip { position: absolute; top: 0; right: 0; width: 14px; height: 100%; cursor: col-resize; touch-action: none; z-index: 2; }
+.colgrip::after { content: ''; position: absolute; top: 20%; bottom: 20%; left: 6px; width: 2px; background: #8c959f; border-radius: 1px; }
+.tt thead th { position: sticky; top: 0; z-index: 1; box-shadow: 0 1px 0 #d0d7de; }
+.timg { display: block; max-width: 100%; height: auto; align-self: flex-start; }
+.timg.broken { background: #f6f8fa; border: 1px dashed #c5cbd6; padding: 12px; min-width: 120px; min-height: 48px; color: #6e7781; font-size: 13px; }
+.imgs { overflow: auto; padding: 16px 18px 28px; }
+.imgs p { margin: 0 0 10px; color: var(--muted); }
+.imgs code { font: 13px var(--mono); background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+.asset { display: grid; grid-template-columns: 72px 1fr; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.asset img { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+.asset .nm { font: 600 14px var(--mono); overflow-wrap: anywhere; }
+.asset .acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.asset .acts button { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; cursor: pointer; font-size: 13px; }
+.note { font-size: 13px; color: var(--muted); margin-top: 12px; }
+.lib { border-top: 1px solid var(--line); padding: 10px 0; }
+.lib .nm { font: 600 14px var(--mono); overflow-wrap: anywhere; }
+.lib textarea { display: block; width: 100%; box-sizing: border-box; height: 180px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--code-bg); color: var(--code-ink); font: 13px/1.5 var(--mono); tab-size: 2; white-space: pre; overflow: auto; resize: vertical; }
+.lib .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.lib .acts button, .newlib button, .newlib input { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; }
+.newlib { display: flex; gap: 8px; margin: 10px 0; }
+.newlib input { flex: 1; min-width: 0; font: 14px var(--mono); }
+table.tt { border-collapse: collapse; font-size: .95em; }
+.tt th, .tt td { border: 1px solid #d0d7de; padding: 7px 12px; text-align: left; }
+.tt th { background: #eef1f6; }
+.tt tbody tr:nth-child(even) td { background: #f6f8fa; }
+.rterr { margin: 0 0 12px; padding: 8px 12px; background: var(--err-bg); color: var(--err); border-radius: 8px; font-size: 13px; }
+.errcard { border-left: 4px solid #b3261e; background: #fdecea; color: #7d1a14; padding: 14px 16px; border-radius: 6px; }
+.errcard h2 { margin: 0 0 6px; font-size: 18px; }
+.errcard pre { margin: 8px 0 0; font: 13px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* help pane */
+.help { overflow: auto; padding: 16px 18px 28px; }
+.help h2 { font-size: 16px; margin: 20px 0 6px; }
+.help h2:first-child { margin-top: 0; }
+.help p { margin: 6px 0; color: var(--muted); }
+.help code, .help pre { font: 13px var(--mono); }
+.help code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+.help pre { background: var(--chip); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 6px 0; }
+.help table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 6px 0; }
+.help td, .help th { border-bottom: 1px solid var(--line); padding: 6px 6px 6px 0; text-align: left; vertical-align: top; }
+.sw { display: inline-flex; align-items: center; gap: 6px; margin: 3px 10px 3px 0; font: 13px var(--mono); }
+.sw i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line); display: inline-block; }
+
+@media (min-width: 900px) {
+  nav { max-width: 460px; }
+  body[data-view="page"] .pane-code, body[data-view="code"] .pane-page { display: flex; }
+  body[data-view="help"] .pane-code, body[data-view="images"] .pane-code, body[data-view="libs"] .pane-code { display: none; }
+  body[data-view="help"] .pane-page, body[data-view="images"] .pane-page, body[data-view="libs"] .pane-page { display: flex; }
+}
+
+</style>
+</head>
+<body data-view="code">
+<header>
+  <div class="mark">tern<small>0.3</small></div>
+  <div class="spacer"></div>
+  <label class="sr" for="ex" style="position:absolute;left:-9999px">Example page</label>
+  <select id="ex"></select>
+  <button class="btn" id="reset" type="button">Reset</button>
+</header>
+<nav role="tablist" aria-label="View">
+  <button role="tab" id="tab-code" aria-selected="true" data-go="code">Code</button>
+  <button role="tab" id="tab-page" aria-selected="false" data-go="page">Page</button>
+  <button role="tab" id="tab-images" aria-selected="false" data-go="images">Images</button>
+  <button role="tab" id="tab-libs" aria-selected="false" data-go="libs">Libraries</button>
+  <button role="tab" id="tab-help" aria-selected="false" data-go="help">Help</button>
+</nav>
+<main>
+  <section class="pane pane-code" aria-label="Code">
+    <div class="chips" id="chips" role="toolbar" aria-label="Quick insert"></div>
+    <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Tern code"></textarea>
+    <div class="status" id="status" role="status"><span class="dot"></span><span class="msg">Ready</span></div>
+  </section>
+  <section class="pane pane-page" aria-label="Page">
+    <div class="bar"><button class="bk" id="back" type="button" aria-label="Back" disabled>&#8249;</button><span class="addr" id="addr">tern://page</span><button class="clr" id="clearsaved" type="button" hidden>Clear saved</button></div>
+    <div class="paper" id="paper"><div id="rterr" class="rterr" hidden></div><div class="page" id="page"></div></div>
+    <div class="mlayer" id="mlayer" hidden><div class="mdlg" id="mdlg" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+  </section>
+  <section class="pane pane-images" aria-label="Images">
+    <div class="imgs">
+      <p>Use a picture in Tern like this: <code>image "mountains" width 240</code></p>
+      <button class="btn" id="addimg" type="button">Add a photo</button>
+      <input type="file" id="file" accept="image/*" hidden>
+      <p class="note" id="imgnote"></p>
+      <div id="imglist"></div>
+    </div>
+  </section>
+  <section class="pane pane-libs" aria-label="Libraries">
+    <div class="imgs">
+      <p>A library is a file of <code>struct</code> and <code>fn</code> that pages share. Use one with <code>use "shop.ternlib"</code>, then call <code>shop.total(cart)</code>.</p>
+      <div class="newlib"><input id="newlibname" placeholder="name, like shop" aria-label="New library name" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="addlib" type="button">Add library</button></div>
+      <p class="note" id="libnote"></p>
+      <div id="liblist"></div>
+    </div>
+  </section>
+  <section class="pane pane-help" aria-label="Help">
+    <div class="help" id="help"></div>
+  </section>
+</main>
+
+<script>/* Tern 0.3 engine: lexer, parser, type checker, runtime.
+ * No DOM in here, so it can be tested with plain node. */
+(function (root) {
+'use strict';
+
+class TernError extends Error {
+  constructor(msg, pos, phase) {
+    super(msg);
+    this.msg = msg; this.pos = pos || [0, 0]; this.phase = phase || 'error'; this.file = null;
+  }
+  toString() { return `${this.phase}${this.file ? ' in ' + this.file : ''} at line ${this.pos[0]}, column ${this.pos[1]}: ${this.msg}`; }
+}
+
+// ---------------------------------------------------------------- types
+const INT = 'Int', TEXT = 'Text', BOOL = 'Bool', UNIT = 'Unit', COLOR = 'Color', ALIGN = 'Align', FLOAT = 'Float', FONT = 'Font';
+const BASE_TYPES = { Int: INT, Float: FLOAT, Text: TEXT, Bool: BOOL, Color: COLOR, Align: ALIGN, Font: FONT };
+const isList = t => Array.isArray(t);
+const tname = t => (isList(t) ? `List<${tname(t[1])}>` : t);
+const teq = (a, b) => (isList(a) ? isList(b) && teq(a[1], b[1]) : a === b);
+
+const COLORS = {
+  black: '#000000', white: '#ffffff', gray: '#6e7781', red: '#d1242f', green: '#1a7f37',
+  blue: '#0b57d0', orange: '#bc4c00', purple: '#8250df', yellow: '#bf8700', pink: '#bf3989',
+};
+const ALIGNS = { left: 'left', center: 'center', right: 'right', spread: 'spread' };
+const FONTS = ['sans', 'serif', 'mono', 'display', 'hand', 'rounded'];
+const CONST_TYPES = {};
+const CONST_VALUES = {};
+for (const k in COLORS) { CONST_TYPES[k] = COLOR; CONST_VALUES[k] = COLORS[k]; }
+for (const k in ALIGNS) { CONST_TYPES[k] = ALIGN; CONST_VALUES[k] = ALIGNS[k]; }
+for (const k of FONTS) { CONST_TYPES[k] = FONT; CONST_VALUES[k] = k; }
+
+// ---------------------------------------------------------------- lexer
+const KEYWORDS = new Set([
+  'page', 'state', 'fn', 'view', 'let', 'if', 'else', 'for', 'foreach', 'in', 'return', 'true', 'false', 'null',
+  'to', 'placeholder', 'text', 'heading', 'button', 'input', 'row', 'column', 'link', 'divider',
+  // 0.2
+  'style', 'size', 'color', 'background', 'align', 'padding', 'bold', 'italic', 'underline',
+  'strike', 'when', 'para', 'span', 'table', 'header', 'cells', 'bullet',
+  // 0.3
+  'image', 'alt', 'width', 'height', 'radius', 'border', 'font', 'goto', 'back',
+  // 0.4
+  'checkbox', 'resizable', 'modal',
+  // layout
+  'gap', 'margin', 'grow', 'maxwidth', 'minwidth', 'grid',
+  // choices
+  'select', 'radio', 'textarea', 'slider', 'disabled',
+  // saved state, timers
+  'saved', 'every',
+  'struct', 'with', 'use', 'self',
+]);
+const TOKEN_RE = new RegExp(
+  '(?<ws>[ \\t\\r]+)|(?<nl>\\n)|(?<comment>//[^\\n]*)|' +
+  '(?<hex>#[0-9A-Fa-f]{6}\\b|#[0-9A-Fa-f]{3}\\b)|(?<float>\\d+\\.\\d+)|(?<int>\\d+)|(?<str>"(?:[^"\\\\\\n]|\\\\.)*")|' +
+  '(?<id>[A-Za-z_][A-Za-z0-9_]*)|(?<op>->|==|!=|<=|>=|&&|\\|\\||[{}()\\[\\],:=<>+\\-*/%!?.])', 'y');
+const GROUPS = ['ws', 'nl', 'comment', 'hex', 'float', 'int', 'str', 'id', 'op'];
+const ESC = { n: '\n', t: '\t', '"': '"', '\\': '\\' };
+
+function tokenize(src) {
+  const toks = [];
+  let i = 0, line = 1, ls = 0;
+  while (i < src.length) {
+    TOKEN_RE.lastIndex = i;
+    const m = TOKEN_RE.exec(src);
+    const pos = [line, i - ls + 1];
+    if (!m || m.index !== i) {
+      if (src[i] === '"') throw new TernError('unterminated string', pos, 'syntax error');
+      throw new TernError(`unexpected character '${src[i]}'`, pos, 'syntax error');
+    }
+    const kind = GROUPS.find(g => m.groups[g] !== undefined);
+    const text = m[0];
+    i = TOKEN_RE.lastIndex;
+    if (kind === 'nl') { line++; ls = i; }
+    else if (kind === 'ws' || kind === 'comment') { /* skip */ }
+    else if (kind === 'int') toks.push({ kind: 'int', val: parseInt(text, 10), pos });
+    else if (kind === 'float') toks.push({ kind: 'float', val: parseFloat(text), pos });
+    else if (kind === 'hex') {
+      let h = text.slice(1).toLowerCase();
+      if (h.length === 3) h = h.split('').map(c => c + c).join('');
+      toks.push({ kind: 'hex', val: '#' + h, pos });
+    } else if (kind === 'str') {
+      const body = text.slice(1, -1);
+      let out = '';
+      for (let j = 0; j < body.length; j++) {
+        if (body[j] === '\\') {
+          const c = body[j + 1];
+          if (!(c in ESC)) throw new TernError(`unknown escape \\${c}`, pos, 'syntax error');
+          out += ESC[c]; j++;
+        } else out += body[j];
+      }
+      toks.push({ kind: 'str', val: out, pos });
+    } else if (kind === 'id') toks.push({ kind: KEYWORDS.has(text) ? 'kw' : 'id', val: text, pos });
+    else toks.push({ kind: 'op', val: text, pos });
+  }
+  toks.push({ kind: 'eof', val: 'end of file', pos: [line, i - ls + 1] });
+  return toks;
+}
+
+// ---------------------------------------------------------------- parser
+const N = (kind, pos, props) => Object.assign({ kind, pos }, props);
+const BIN_LEVELS = [['||'], ['&&'], ['==', '!='], ['<', '>', '<=', '>='], ['+', '-'], ['*', '/', '%']];
+const FLAGS = new Set(['bold', 'italic', 'underline', 'strike', 'disabled']);
+const VALUE_MODS = new Set(['size', 'color', 'background', 'align', 'padding', 'font', 'radius', 'border', 'width', 'height', 'alt', 'gap', 'margin', 'grow', 'maxwidth', 'minwidth']);
+
+class Parser {
+  // o.lib: parsing a .ternlib file; o.prefix: "shop." added to the names it declares; o.mods: libraries a page uses
+  constructor(toks, o = {}) {
+    this.t = toks; this.i = 0; this.structNames = new Set(); this.ownFns = new Set();
+    this.lib = !!o.lib; this.prefix = o.prefix || ''; this.libs = o.mods || {};
+    for (let k = 0; k + 1 < toks.length; k++) {
+      if (toks[k].kind !== 'kw' || toks[k + 1].kind !== 'id') continue;
+      if (toks[k].val === 'struct') this.structNames.add(toks[k + 1].val);
+      if (toks[k].val === 'fn') this.ownFns.add(toks[k + 1].val);
+    }
+    for (const m in this.libs) for (const st of this.libs[m].structs) this.structNames.add(`${m}.${st}`);
+  }
+  notModule(tok) {
+    if (this.libs[tok.val]) throw new TernError(`'${tok.val}' is the name of a library you use; pick another name`, tok.pos, 'syntax error');
+    return tok;
+  }
+  peek(k = 0) { return this.t[Math.min(this.i + k, this.t.length - 1)]; }
+  next() { const t = this.peek(); this.i++; return t; }
+  is(val, k = 0) { const t = this.peek(k); return (t.kind === 'kw' || t.kind === 'op') && t.val === val; }
+  accept(val) { return this.is(val) ? this.next() : null; }
+  expect(val) {
+    if (!this.is(val)) {
+      const t = this.peek();
+      throw new TernError(`expected '${val}' but found '${t.val}'`, t.pos, 'syntax error');
+    }
+    return this.next();
+  }
+  ident(what = 'a name') {
+    const t = this.peek();
+    if (t.kind !== 'id') throw new TernError(`expected ${what} but found '${t.val}'`, t.pos, 'syntax error');
+    return this.next();
+  }
+  nextKind(kind, what) {
+    const t = this.peek();
+    if (t.kind !== kind) throw new TernError(`expected ${what} but found '${t.val}'`, t.pos, 'syntax error');
+    return this.next();
+  }
+
+  program() {
+    let title = null;
+    const states = [], fns = [], styles = [], views = [], structs = [];
+    const uses = [];
+    if (this.lib && this.is('page')) throw new TernError('a library has no page title; it holds only struct and fn', this.peek().pos, 'syntax error');
+    if (this.accept('page')) title = this.nextKind('str', 'a page title in quotes').val;
+    while (this.peek().kind !== 'eof') {
+      const t = this.peek();
+      if (this.lib && (this.is('state') || this.is('view') || this.is('style') || this.is('use')))
+        throw new TernError(this.is('use') ? 'a library cannot use other libraries yet' : `a library holds only struct and fn; keep '${t.val}' in the page`, t.pos, 'syntax error');
+      if (this.is('use')) { this.next(); uses.push(N('use', t.pos, { file: this.nextKind('str', 'a library file name in quotes, like "shop.ternlib"').val })); }
+      else if (this.is('struct')) structs.push(this.structDecl());
+      else if (this.is('saved') && this.is('state', 1)) { this.next(); const d = this.stateDecl(); d.saved = true; states.push(d); }
+      else if (this.is('state')) states.push(this.stateDecl());
+      else if (this.is('fn')) fns.push(this.fnDecl());
+      else if (this.is('style')) styles.push(this.styleDecl());
+      else if (this.is('view')) {
+        this.next();
+        const name = this.peek().kind === 'id' ? this.next().val : 'home';
+        views.push(N('view', t.pos, { name, body: this.viewBlock() }));
+      } else throw new TernError(`expected 'use', 'struct', 'state', 'fn', 'style' or 'view' but found '${t.val}'`, t.pos, 'syntax error');
+    }
+    if (!views.length && !this.lib) throw new TernError('page has no view', this.peek().pos, 'syntax error');
+    return N('program', [1, 1], { title, uses, structs, states, fns, styles, views });
+  }
+
+  type() {
+    const t = this.ident('a type');
+    if (BASE_TYPES[t.val]) return BASE_TYPES[t.val];
+    if (this.libs[t.val] && this.is('.')) {
+      this.next(); const m = this.ident('a struct name');
+      if (!this.libs[t.val].structs.has(m.val)) throw new TernError(`library ${t.val} has no struct '${m.val}'`, m.pos, 'syntax error');
+      return `${t.val}.${m.val}`;
+    }
+    if (this.structNames.has(t.val)) return this.prefix + t.val;
+    if (t.val === 'List') { this.expect('<'); const inner = this.type(); this.expect('>'); return ['List', inner]; }
+    throw new TernError(`unknown type '${t.val}' (try Int, Text, Bool, Color, Align, List<...> or a struct you declared)`, t.pos, 'syntax error');
+  }
+  structDecl() {
+    const pos = this.next().pos;
+    const nameTok = this.ident('a struct name');
+    this.expect('{');
+    const fields = [], methods = [];
+    while (!this.is('}')) {
+      const ft = this.peek();
+      if (this.is('fn')) { methods.push(this.fnDecl(true)); continue; }
+      if (ft.kind === 'kw') throw new TernError(`'${ft.val}' is a reserved word and cannot be a field name; try another, like ${ft.val}Value`, ft.pos, 'syntax error');
+      if (ft.kind === 'eof') throw new TernError("missing '}'", ft.pos, 'syntax error');
+      const f = this.ident('a field name'); this.expect(':');
+      fields.push([f.val, this.type(), f.pos]);
+      this.accept(',');
+    }
+    this.expect('}');
+    return N('structdecl', pos, { name: this.prefix + nameTok.val, namePos: nameTok.pos, fields, methods });
+  }
+  stateDecl() {
+    const pos = this.next().pos;
+    const name = this.notModule(this.ident('a state name')).val;
+    this.expect(':'); const type = this.type(); this.expect('=');
+    return N('state', pos, { name, type, init: this.expr() });
+  }
+  styleDecl() {
+    const pos = this.next().pos;
+    const name = this.ident('a style name').val;
+    this.expect('{');
+    const mods = this.mods();
+    this.expect('}');
+    return N('styledecl', pos, { name, mods });
+  }
+  fnDecl(method = false) {
+    const pos = this.next().pos;
+    const nameTok = this.notModule(this.ident(method ? 'a method name' : 'a function name'));
+    if (!method && this.lib && BUILTINS[nameTok.val] !== undefined) throw new TernError(`'${nameTok.val}' is a built-in name; pick another name for this function`, nameTok.pos, 'syntax error');
+    const name = method ? nameTok.val : this.prefix + nameTok.val;
+    this.expect('(');
+    const params = [];
+    while (!this.is(')')) {
+      const p = this.notModule(this.ident('a parameter name')); this.expect(':');
+      params.push([p.val, this.type(), p.pos]);
+      if (!this.accept(',')) break;
+    }
+    this.expect(')');
+    const ret = this.accept(':') ? this.type() : UNIT;
+    return N('fn', pos, { name, params, ret, body: this.block() });
+  }
+
+  // ---- modifiers: size 20 bold color red style note ...
+  mods() {
+    const out = [];
+    for (;;) {
+      const t = this.peek();
+      if (t.kind !== 'kw') break;
+      if (FLAGS.has(t.val)) {
+        this.next();
+        out.push(N('mod', t.pos, { name: t.val, value: null, when: this.accept('when') ? this.expr() : null }));
+      } else if (VALUE_MODS.has(t.val)) {
+        this.next();
+        out.push(N('mod', t.pos, { name: t.val, value: this.expr(), when: null }));
+      } else if (t.val === 'style') {
+        this.next();
+        const names = [this.ident('a style name')];
+        while (this.peek().kind === 'id') names.push(this.next());
+        out.push(N('mod', t.pos, { name: 'style', value: names.map(n => [n.val, n.pos]), when: null }));
+      } else break;
+    }
+    return out;
+  }
+
+  // ---- statements
+  block() {
+    this.expect('{');
+    const out = [];
+    while (!this.is('}')) {
+      if (this.peek().kind === 'eof') throw new TernError("missing '}'", this.peek().pos, 'syntax error');
+      out.push(this.stmt());
+    }
+    this.expect('}');
+    return out;
+  }
+  stmt() {
+    const t = this.peek();
+    if (this.accept('let')) {
+      const name = this.notModule(this.ident('a variable name')).val;
+      const type = this.accept(':') ? this.type() : null;
+      this.expect('=');
+      return N('let', t.pos, { name, type, value: this.expr() });
+    }
+    if (this.accept('if')) {
+      const cond = this.expr(), then = this.block();
+      let other = [];
+      if (this.accept('else')) other = this.is('if') ? [this.stmt()] : this.block();
+      return N('if', t.pos, { cond, then, other });
+    }
+    if (this.accept('for') || this.accept('foreach')) {
+      const v = this.notModule(this.ident('a loop variable')).val; this.expect('in');
+      return N('for', t.pos, { var: v, iter: this.expr(), body: this.block() });
+    }
+    if (this.accept('goto')) return N('goto', t.pos, { name: this.ident('the name of a page').val });
+    if (this.accept('back')) return N('back', t.pos, {});
+    if (this.accept('return')) {
+      if (this.is('}')) return N('return', t.pos, { value: null });
+      return N('return', t.pos, { value: this.expr() });
+    }
+    if (t.kind === 'id' && this.is('=', 1)) {
+      this.next(); this.next();
+      return N('assign', t.pos, { name: t.val, value: this.expr() });
+    }
+    const e = this.expr();
+    if (this.is('=')) {
+      const eq = this.next();
+      if (e.kind === 'index') throw new TernError('a list is changed with setAt, like: xs = setAt(xs, i, value)', eq.pos, 'syntax error');
+      if (e.kind !== 'field') throw new TernError('you can change a variable or a field, like: x = 1 or item.qty = 2', eq.pos, 'syntax error');
+      return N('setpath', t.pos, { target: e, value: this.expr() });
+    }
+    return N('expr', t.pos, { value: e });
+  }
+
+  // ---- expressions
+  expr(lvl = 0) {
+    if (lvl === BIN_LEVELS.length) return this.unary();
+    let left = this.expr(lvl + 1);
+    while (this.peek().kind === 'op' && BIN_LEVELS[lvl].includes(this.peek().val)) {
+      const op = this.next();
+      left = N('bin', op.pos, { op: op.val, l: left, r: this.expr(lvl + 1) });
+    }
+    return left;
+  }
+  unary() {
+    const t = this.peek();
+    if (t.kind === 'op' && (t.val === '!' || t.val === '-')) {
+      this.next();
+      return N('un', t.pos, { op: t.val, e: this.unary() });
+    }
+    return this.postfix();
+  }
+  postfix() {
+    let e = this.primary();
+    for (;;) {
+      if (e.kind === 'var' && this.libs[e.name] && this.is('.') && this.peek(1).kind === 'id') {
+        this.next();
+        const m = this.next(), info = this.libs[e.name];
+        if (!info.fns.has(m.val) && !info.structs.has(m.val))
+          throw new TernError(`library ${e.name} has no '${m.val}' (it has: ${[...info.fns, ...info.structs].join(', ') || 'nothing'})`, m.pos, 'syntax error');
+        e = N('var', e.pos, { name: `${e.name}.${m.val}` });
+      } else if (this.is('(') && e.kind === 'var') {
+        this.next();
+        if (this.structNames.has(e.name)) {
+          const fields = [];
+          while (!this.is(')')) {
+            const f = this.peek();
+            if (!(f.kind === 'id' && this.is(':', 1)))
+              throw new TernError(`${e.name}(...) needs named fields, like ${e.name}(field: value, ...)`, f.pos, 'syntax error');
+            this.next(); this.next();
+            fields.push([f.val, this.expr(), f.pos]);
+            if (!this.accept(',')) break;
+          }
+          this.expect(')');
+          e = N('construct', e.pos, { name: this.lib ? this.prefix + e.name : e.name, fields });
+          continue;
+        }
+        const args = [];
+        while (!this.is(')')) { args.push(this.expr()); if (!this.accept(',')) break; }
+        this.expect(')');
+        e = N('call', e.pos, { name: this.lib && this.ownFns.has(e.name) ? this.prefix + e.name : e.name, args });
+      } else if (this.is('.')) {
+        const pos = this.next().pos;
+        const nm = this.ident('a field or method name').val;
+        if (this.is('(')) {
+          this.next();
+          const args = [];
+          while (!this.is(')')) { args.push(this.expr()); if (!this.accept(',')) break; }
+          this.expect(')');
+          e = N('mcall', pos, { recv: e, name: nm, args });
+        } else e = N('field', pos, { e, name: nm });
+      } else if (this.is('with')) {
+        const pos = this.next().pos;
+        const updates = [];
+        do {
+          const f = this.ident('a field name'); this.expect(':');
+          updates.push([f.val, this.expr(), f.pos]);
+        } while (this.is(',') && this.peek(1).kind === 'id' && this.is(':', 2) && this.next());
+        e = N('with', pos, { e, updates });
+      } else if (this.is('[')) {
+        const pos = this.next().pos;
+        const idx = this.expr(); this.expect(']');
+        e = N('index', pos, { e, idx });
+      } else return e;
+    }
+  }
+  primary() {
+    const t = this.next();
+    if (t.kind === 'int') return N('int', t.pos, { v: t.val });
+    if (t.kind === 'str') return N('str', t.pos, { v: t.val });
+    if (t.kind === 'hex') return N('color', t.pos, { v: t.val });
+    if (t.kind === 'float') return N('float', t.pos, { v: t.val });
+    if (t.kind === 'id') return N('var', t.pos, { name: t.val });
+    if (t.kind === 'kw' && t.val === 'self') return N('var', t.pos, { name: 'self' });
+    if (t.kind === 'kw' && (t.val === 'true' || t.val === 'false')) return N('bool', t.pos, { v: t.val === 'true' });
+    if (t.kind === 'op' && t.val === '[') {
+      const items = [];
+      while (!this.is(']')) { items.push(this.expr()); if (!this.accept(',')) break; }
+      this.expect(']');
+      return N('list', t.pos, { items });
+    }
+    if (t.kind === 'op' && t.val === '(') { const e = this.expr(); this.expect(')'); return e; }
+    throw new TernError(`expected an expression but found '${t.val}'`, t.pos, 'syntax error');
+  }
+
+  // ---- view
+  viewBlock() {
+    this.expect('{');
+    const out = [];
+    while (!this.is('}')) {
+      if (this.peek().kind === 'eof') throw new TernError("missing '}'", this.peek().pos, 'syntax error');
+      out.push(this.viewItem());
+    }
+    this.expect('}');
+    return out;
+  }
+  viewItem() {
+    const t = this.next();
+    const k = t.kind === 'kw' ? t.val : null;
+    if (k === 'heading' || k === 'text' || k === 'bullet') {
+      const e = this.expr();
+      return N(k, t.pos, { e, mods: this.mods() });
+    }
+    if (k === 'button') {
+      const label = this.expr(), mods = this.mods();
+      this.expect('->');
+      const action = this.is('{') ? this.block() : [this.stmt()];
+      return N('button', t.pos, { label, mods, action });
+    }
+    if (k === 'modal') {   // modal <Bool> [style words] [-> action] { ... }
+      const e = this.expr(), mods = this.mods();
+      const action = this.accept('->') ? (this.is('{') ? this.block() : [this.stmt()]) : null;
+      return N('modal', t.pos, { e, mods, action, body: this.viewBlock() });
+    }
+    if (k === 'every') {   // every <milliseconds> [when <Bool>] -> action
+      const ms = this.expr(), when = this.accept('when') ? this.expr() : null;
+      this.expect('->');
+      return N('every', t.pos, { ms, when, action: this.is('{') ? this.block() : [this.stmt()] });
+    }
+    if (k === 'textarea') {   // textarea <Text place> [placeholder "x"] [style words]
+      const target = this.expr();
+      if (target.kind !== 'var' && target.kind !== 'field' && target.kind !== 'index')
+        throw new TernError('textarea edits a Text state, like: textarea notes   or a place inside one, like: textarea items[i]', target.pos, 'syntax error');
+      return N('textarea', t.pos, { target, placeholder: this.accept('placeholder') ? this.expr() : null, mods: this.mods() });
+    }
+    if (k === 'slider') {   // slider <Int place> in <low> to <high> [style words]
+      const target = this.expr();
+      if (target.kind !== 'var' && target.kind !== 'field' && target.kind !== 'index')
+        throw new TernError('slider edits an Int state, like: slider volume in 0 to 100   or a place inside one, like: slider levels[i] in 0 to 10', target.pos, 'syntax error');
+      this.expect('in'); const lo = this.expr(); this.expect('to'); const hi = this.expr();
+      return N('slider', t.pos, { target, lo, hi, mods: this.mods() });
+    }
+    if (k === 'select' || k === 'radio') {   // select <Text place> in <List<Text>> [placeholder "x"] [style words]
+      const target = this.expr();
+      if (target.kind !== 'var' && target.kind !== 'field' && target.kind !== 'index')
+        throw new TernError(`${k} edits a Text state, like: ${k} choice in options   or a place inside one, like: ${k} items[i] in options`, target.pos, 'syntax error');
+      this.expect('in');
+      const options = this.expr();
+      const placeholder = k === 'select' && this.accept('placeholder') ? this.expr() : null;
+      return N(k, t.pos, { target, options, placeholder, mods: this.mods() });
+    }
+    if (k === 'checkbox') {
+      const c = this.checkboxParts();
+      return N('checkbox', t.pos, c);
+    }
+    if (k === 'input') {
+      const target = this.expr();   // a Text state, or a place inside one: names[i]  people[i].name
+      if (target.kind !== 'var' && target.kind !== 'field' && target.kind !== 'index')
+        throw new TernError('input edits a Text state, like: input name   or a place inside one, like: input names[i]', target.pos, 'syntax error');
+      return N('input', t.pos, { target, name: target.kind === 'var' ? target.name : '', placeholder: this.accept('placeholder') ? this.expr() : null, mods: this.mods() });
+    }
+    if (k === 'row' || k === 'column') {
+      const mods = this.mods();
+      return N(k, t.pos, { mods, body: this.viewBlock() });
+    }
+    if (k === 'grid') {   // grid <columns> [style words] { ... }
+      const cols = this.expr(), mods = this.mods();
+      return N('grid', t.pos, { cols, mods, body: this.viewBlock() });
+    }
+    if (k === 'para') {
+      const mods = this.mods();
+      this.expect('{');
+      const spans = [];
+      while (!this.is('}')) {
+        const s = this.peek();
+        if (!this.accept('span')) throw new TernError(`inside para, write: span "text"  (found '${s.val}')`, s.pos, 'syntax error');
+        const e = this.expr();
+        spans.push(N('span', s.pos, { e, mods: this.mods() }));
+      }
+      this.expect('}');
+      return N('para', t.pos, { mods, spans });
+    }
+    if (k === 'table') {
+      let mods = [], resizable = false;
+      for (;;) {   // 'resizable' and the style words may come in any order
+        const m = this.mods(); mods = mods.concat(m);
+        if (this.accept('resizable')) { resizable = true; continue; }
+        if (!m.length) break;
+      }
+      return N('table', t.pos, { mods, resizable, body: this.tableBlock() });
+    }
+    if (k === 'if') {
+      const cond = this.expr(), then = this.viewBlock();
+      let other = [];
+      if (this.accept('else')) other = this.is('if') ? [this.viewItem()] : this.viewBlock();
+      return N('vif', t.pos, { cond, then, other });
+    }
+    if (k === 'for' || k === 'foreach') {
+      const v = this.notModule(this.ident('a loop variable')).val; this.expect('in');
+      return N('vfor', t.pos, { var: v, iter: this.expr(), body: this.viewBlock() });
+    }
+    if (k === 'link') {
+      const label = this.expr();
+      const mods = this.mods();
+      if (this.accept('->')) {
+        const action = this.is('{') ? this.block() : [this.stmt()];
+        return N('link', t.pos, { label, target: null, action, mods });
+      }
+      this.expect('to');
+      const target = this.expr();
+      return N('link', t.pos, { label, target, action: null, mods: mods.concat(this.mods()) });
+    }
+    if (k === 'image') {
+      const e = this.expr();
+      return N('image', t.pos, { e, mods: this.mods() });
+    }
+    if (k === 'divider') return N('divider', t.pos, {});
+    throw new TernError(`expected a view element (text, heading, button, ...) but found '${t.val}'`, t.pos, 'syntax error');
+  }
+  tableBlock() {
+    this.expect('{');
+    const out = [];
+    while (!this.is('}')) {
+      if (this.peek().kind === 'eof') throw new TernError("missing '}'", this.peek().pos, 'syntax error');
+      out.push(this.tableItem());
+    }
+    this.expect('}');
+    return out;
+  }
+  tableItem() {
+    const t = this.next();
+    const k = t.kind === 'kw' ? t.val : null;
+    if (k === 'header' || k === 'cells') {
+      const cells = [this.cell()];
+      while (this.accept(',')) cells.push(this.cell());
+      return N(k, t.pos, { cells });
+    }
+    if (k === 'if') {
+      const cond = this.expr(), then = this.tableBlock();
+      let other = [];
+      if (this.accept('else')) other = this.is('if') ? [this.tableItem2()] : this.tableBlock();
+      return N('vif', t.pos, { cond, then, other });
+    }
+    if (k === 'for' || k === 'foreach') {
+      const v = this.notModule(this.ident('a loop variable')).val; this.expect('in');
+      return N('vfor', t.pos, { var: v, iter: this.expr(), body: this.tableBlock() });
+    }
+    throw new TernError(`inside a table you can use 'header', 'cells', 'if', 'for' and 'foreach' (found '${t.val}')`, t.pos, 'syntax error');
+  }
+  tableItem2() { return this.tableItem(); }
+  // checkbox <Bool> ["label"] [style words] [-> action]
+  checkboxParts() {
+    const e = this.expr(), nx = this.peek();
+    const label = (nx.kind === 'str' || nx.kind === 'id' || this.is('(')) ? this.expr() : null;
+    const mods = this.mods();
+    const action = this.accept('->') ? (this.is('{') ? this.block() : [this.stmt()]) : null;
+    return { e, label, mods, action };
+  }
+  // One cell: a Text value, or a button or link, optionally followed by: span 2
+  cell() {
+    const t = this.peek();
+    let c;
+    if (this.accept('button')) {
+      const e = this.expr(), mods = this.mods();
+      this.expect('->');
+      c = N('cell', t.pos, { kind: 'button', e, mods, action: this.is('{') ? this.block() : [this.stmt()], target: null });
+    } else if (this.accept('link')) {
+      const e = this.expr();
+      let mods = this.mods(), action = null, target = null;
+      if (this.accept('->')) action = this.is('{') ? this.block() : [this.stmt()];
+      else { this.expect('to'); target = this.expr(); mods = mods.concat(this.mods()); }
+      c = N('cell', t.pos, { kind: 'link', e, mods, action, target });
+    } else if (this.accept('select')) {
+      const place = this.expr(); this.expect('in');
+      const opts = this.expr();
+      c = N('cell', t.pos, { kind: 'select', e: this.accept('placeholder') ? this.expr() : N('str', t.pos, { v: '' }), cond: place, opts, mods: [], action: null, target: null });
+    } else if (this.accept('input')) {
+      const place = this.expr();
+      c = N('cell', t.pos, { kind: 'input', e: this.accept('placeholder') ? this.expr() : N('str', t.pos, { v: '' }), cond: place, mods: [], action: null, target: null });
+    } else if (this.accept('checkbox')) {
+      const p = this.checkboxParts();
+      c = N('cell', t.pos, { kind: 'checkbox', e: p.label || N('str', t.pos, { v: '' }), cond: p.e, mods: p.mods, action: p.action, target: null });
+    } else { const e = this.expr(); c = N('cell', t.pos, { kind: 'text', e, mods: [], action: null, target: null }); }
+    c.span = 1;
+    for (;;) {   // style words and 'span N' may come in either order
+      if (c.kind === 'text') { const m = this.mods(); if (m.length) { c.mods = c.mods.concat(m); continue; } }
+      if (!this.accept('span')) break;
+      const n = this.next();
+      if (n.kind !== 'int') throw new TernError("write the number of columns after 'span', like: span 2", n.pos, 'syntax error');
+      c.span = n.val; c.spanPos = n.pos;
+    }
+    return c;
+  }
+}
+
+function parse(src, o) { return new Parser(tokenize(src), o).program(); }
+
+// Reads a page and the libraries it names with `use "shop.ternlib"`. Each library is parsed and
+// checked on its own first (so its errors name its file), then its structs and functions are added to
+// the page under the prefix `shop.`. opts.libraries is { shop: "source text" }.
+function buildProgram(src, opts) {
+  opts = opts || {};
+  const toks = tokenize(src), mods = {}, libs = [];
+  for (let k = 0; k + 1 < toks.length; k++) {
+    if (!(toks[k].kind === 'kw' && toks[k].val === 'use' && toks[k + 1].kind === 'str')) continue;
+    const file = toks[k + 1].val, pos = toks[k].pos;
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)\.ternlib$/.exec(file);
+    if (!m) throw new TernError('a library is named like use "shop.ternlib" (a file next to this page, with no folders)', pos, 'syntax error');
+    const name = m[1];
+    if (name in mods) throw new TernError(`library ${file} is used twice`, pos, 'syntax error');
+    if (KEYWORDS.has(name) || BUILTINS[name] !== undefined || BASE_TYPES[name]) throw new TernError(`'${name}' cannot be a library name; rename the file`, pos, 'syntax error');
+    const libs0 = opts.libraries || {};
+    if (!Object.prototype.hasOwnProperty.call(libs0, name) || typeof libs0[name] !== 'string')
+      throw new TernError(`library ${file} was not found (${opts.libraryHint || 'put it next to the page'})`, pos, 'library error');
+    let lp;
+    try {
+      lp = new Parser(tokenize(libs0[name]), { lib: true, prefix: name + '.' }).program();
+      new Checker(lp, opts).run();
+    } catch (e) { if (e instanceof TernError) e.file = file; throw e; }
+    const strip = n => n.slice(name.length + 1);
+    mods[name] = { fns: new Set(lp.fns.map(f => strip(f.name))), structs: new Set(lp.structs.map(s => strip(s.name))) };
+    libs.push(lp);
+  }
+  const prog = new Parser(toks, { mods }).program();
+  prog.structs = [...libs.flatMap(l => l.structs), ...prog.structs];
+  prog.fns = [...libs.flatMap(l => l.fns), ...prog.fns];
+  return prog;
+}
+
+// ---------------------------------------------------------------- checker
+const LAYOUT = ['margin', 'grow', 'maxwidth', 'minwidth'];   // size and spacing words most blocks accept
+const TEXT_PROPS = ['size', 'bold', 'italic', 'underline', 'strike', 'color', 'background', 'align', 'font', 'padding', 'radius', 'border', 'style', ...LAYOUT];
+const ALL_PROPS = ['size', 'bold', 'italic', 'underline', 'strike', 'color', 'background', 'align', 'font', 'padding', 'radius', 'border', 'width', 'height', 'alt', 'gap', ...LAYOUT];
+const ALLOWED = {
+  heading: new Set(TEXT_PROPS), text: new Set(TEXT_PROPS), bullet: new Set(TEXT_PROPS), para: new Set(TEXT_PROPS),
+  span: new Set(['size', 'bold', 'italic', 'underline', 'strike', 'color', 'background', 'font', 'style']),
+  link: new Set(['size', 'bold', 'italic', 'strike', 'color', 'font', 'style']),
+  button: new Set(['size', 'bold', 'italic', 'color', 'background', 'font', 'padding', 'radius', 'border', 'width', 'style', 'margin', 'grow', 'disabled']),
+  row: new Set(['background', 'padding', 'radius', 'border', 'width', 'style', 'gap', 'align', ...LAYOUT]),
+  column: new Set(['background', 'padding', 'radius', 'border', 'width', 'style', 'gap', 'align', ...LAYOUT]),
+  grid: new Set(['background', 'padding', 'radius', 'border', 'width', 'style', 'gap', ...LAYOUT]),
+  image: new Set(['width', 'height', 'radius', 'border', 'align', 'alt', 'style', ...LAYOUT]),
+  select: new Set(['size', 'color', 'font', 'width', 'style', 'disabled', ...LAYOUT]),
+  radio: new Set(['size', 'color', 'font', 'style', 'margin', 'disabled']),
+  input: new Set(['width', 'disabled', ...LAYOUT]),
+  textarea: new Set(['width', 'height', 'size', 'font', 'disabled', ...LAYOUT]),
+  slider: new Set(['width', 'color', 'disabled', ...LAYOUT]),
+  modal: new Set(['width', 'background', 'padding', 'radius', 'border', 'style']),
+  checkbox: new Set(['size', 'bold', 'italic', 'color', 'font', 'style', 'disabled']),
+  table: new Set(['height', 'padding', 'size', 'color', 'background', 'border', 'font', 'style', ...LAYOUT]),
+  cellrow: new Set(['size', 'bold', 'italic', 'underline', 'strike', 'color', 'background', 'align', 'font', 'style']),
+};
+const PROP_TYPES = { size: INT, padding: INT, radius: INT, width: INT, height: INT, gap: INT, margin: INT, grow: INT, maxwidth: INT, minwidth: INT, color: COLOR, background: COLOR,
+  border: COLOR, align: ALIGN, font: FONT, alt: TEXT };
+const BUILTINS = {
+  toText: 1, len: 1, append: 2, removeAt: 2, range: 1, trim: 1, upper: 1, lower: 1,
+  contains: 2, join: 2, rgb: 3, setAt: 3, slice: 3, sort: 1, sortOrder: 1, reverse: 1,
+  toFloat: 1, round: 1, floor: 1, ceil: 1, fixed: 2, sqrt: 1, toIntOr: 2, toFloatOr: 2,
+};
+
+function alwaysReturns(stmts) {
+  for (const s of stmts) {
+    if (s.kind === 'return') return true;
+    if (s.kind === 'if' && s.other.length && alwaysReturns(s.then) && alwaysReturns(s.other)) return true;
+  }
+  return false;
+}
+
+class Checker {
+  constructor(prog, opts) {
+    this.prog = prog; this.opts = opts || {}; this.structs = {}; this.methods = {}; this.curMethod = null; this.stmtCall = null; this.states = {}; this.fns = {}; this.styles = {}; this.views = {};
+    this.scopes = []; this.ret = null; this.tbl = null; this.nest = 0;
+  }
+  err(msg, node) { throw new TernError(msg, node.pos, 'type error'); }
+  lookup(name) {
+    for (let i = this.scopes.length - 1; i >= 0; i--) if (name in this.scopes[i]) return this.scopes[i][name];
+    if (name in this.states) return this.states[name];
+    return CONST_TYPES[name];
+  }
+  declare(name, ty, node) {
+    const sc = this.scopes[this.scopes.length - 1];
+    if (name in sc) this.err(`'${name}' is already defined here`, node);
+    sc[name] = ty;
+  }
+  run() {
+    const p = this.prog;
+    for (const st of p.structs) {
+      if (st.name in BASE_TYPES || st.name === 'List') this.err(`'${st.name}' is a built-in type name; pick another name for the struct`, { pos: st.namePos });
+      if (st.name in this.structs) this.err(`struct '${st.name}' is defined twice`, { pos: st.namePos });
+      if (!st.fields.length) this.err(`struct '${st.name}' needs at least one field`, st);
+      const seen = new Set();
+      for (const [fname, , fpos] of st.fields) {
+        if (seen.has(fname) || fname === '__proto__') this.err(`field '${fname}' is ${fname === '__proto__' ? 'not allowed' : 'defined twice'} in struct ${st.name}`, { pos: fpos });
+        seen.add(fname);
+      }
+      this.structs[st.name] = st;
+      for (const m of st.methods) {
+        const key = `${st.name}.${m.name}`;
+        if (seen.has(m.name) || key in this.methods) this.err(`'${m.name}' is defined twice in struct ${st.name} (a method cannot share a name with a field)`, m);
+        this.methods[key] = { params: m.params.map(x => x[1]), ret: m.ret, decl: m, struct: st.name };
+      }
+    }
+    for (const st of p.structs) {
+      const reach = (t, path) => {
+        while (isList(t)) t = t[1];
+        if (!(t in this.structs)) return;
+        if (path.includes(t)) this.err(`struct ${st.name} contains itself (${[...path, t].join(' -> ')}); a struct cannot hold itself, even inside a list`, { pos: st.namePos });
+        for (const f of this.structs[t].fields) reach(f[1], [...path, t]);
+      };
+      reach(st.name, []);
+    }
+    for (const s of p.states) {
+      if (s.name in this.states || s.name in this.fns) this.err(`'${s.name}' is defined twice`, s);
+      this.states[s.name] = s.type;
+    }
+    for (const f of p.fns) {
+      if (f.name in this.states || f.name in this.fns || f.name in BUILTINS) this.err(`'${f.name}' is defined twice or is a built-in name`, f);
+      this.fns[f.name] = [f.params.map(x => x[1]), f.ret];
+    }
+    for (const s of p.styles) {
+      if (s.name in this.styles) this.err(`style '${s.name}' is defined twice`, s);
+      this.styles[s.name] = s;
+    }
+    for (const v of p.views) {
+      if (v.name in this.views) this.err(`there are two pages called '${v.name}'; give each view its own name, like: view ${v.name === 'home' ? 'about' : v.name + '2'} { ... }`, v);
+      this.views[v.name] = v;
+    }
+    this.scopes = [{}];
+    for (const s of p.states) this.expectType(s.init, s.type, `state '${s.name}'`);
+    for (const s of p.styles) {
+      for (const m of s.mods) {
+        if (m.name === 'style') this.err('a style cannot use another style', m);
+        this.checkMods([m], 'text', m, true);
+      }
+    }
+    for (const f of p.fns) {
+      this.scopes = [{}];
+      for (const [name, ty, pos] of f.params) this.declare(name, ty, { pos });
+      this.ret = f.ret;
+      this.block(f.body);
+      if (f.ret !== UNIT && !alwaysReturns(f.body)) this.err(`function '${f.name}' must return ${tname(f.ret)} on every path`, f);
+    }
+    for (const st of p.structs) {
+      for (const m of st.methods) {
+        this.scopes = [{ self: st.name }];
+        this.scopes.push({});
+        for (const [name, ty, pos] of m.params) this.declare(name, ty, { pos });
+        this.ret = m.ret; this.curMethod = m;
+        this.block(m.body);
+        this.curMethod = null;
+        if (m.ret !== UNIT && !alwaysReturns(m.body)) this.err(`method '${m.name}' must return ${tname(m.ret)} on every path`, m);
+      }
+    }
+    for (const v of p.views) { this.ret = null; this.scopes = [{}]; this.view(v.body); }
+    return this;
+  }
+  checkMods(mods, kind, node, anyKind) {
+    const allowed = anyKind ? new Set([...ALL_PROPS, 'style']) : ALLOWED[kind];
+    for (const m of mods) {
+      if (!allowed.has(m.name)) this.err(`${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind} cannot have '${m.name}'`, m);
+      if (m.name === 'style') {
+        for (const [n, pos] of m.value) if (!(n in this.styles)) this.err(`unknown style '${n}' (declare it with: style ${n} { ... })`, { pos });
+      } else if (FLAGS.has(m.name)) {
+        if (m.when) this.expectType(m.when, BOOL, `'${m.name} when'`);
+      } else this.expectType(m.value, PROP_TYPES[m.name], `'${m.name}'`);
+    }
+  }
+  block(stmts) { this.scopes.push({}); for (const s of stmts) this.stmt(s); this.scopes.pop(); }
+  stmt(s) {
+    switch (s.kind) {
+      case 'let': {
+        let ty;
+        if (s.type) { this.expectType(s.value, s.type, `'${s.name}'`); ty = s.type; } else ty = this.expr(s.value);
+        this.declare(s.name, ty, s); break;
+      }
+      case 'assign': {
+        const ty = this.lookup(s.name);
+        if (ty === undefined) this.err(`unknown variable '${s.name}'`, s);
+        if (!(s.name in this.states) && s.name in CONST_TYPES && !this.scopes.some(sc => s.name in sc))
+          this.err(`'${s.name}' is built in and cannot be changed`, s);
+        this.expectType(s.value, ty, `'${s.name}'`); break;
+      }
+      case 'if': this.expectType(s.cond, BOOL, 'an if condition'); this.block(s.then); this.block(s.other); break;
+      case 'for': {
+        const ity = this.expr(s.iter);
+        if (!isList(ity)) this.err(`can only loop over a List, not ${tname(ity)}`, s.iter);
+        this.scopes.push({ [s.var]: ity[1], ['\0' + s.var]: true }); this.block(s.body); this.scopes.pop(); break;
+      }
+      case 'goto':
+        if (!(s.name in this.views)) this.err(`there is no page called '${s.name}' (pages are declared with: view ${s.name} { ... })`, s);
+        break;
+      case 'back': break;
+      case 'return':
+        if (this.ret === null) this.err("'return' can only be used inside a function", s);
+        if (s.value === null) { if (this.ret !== UNIT) this.err(`this function must return ${tname(this.ret)}`, s); }
+        else this.expectType(s.value, this.ret, 'the returned value');
+        break;
+      case 'setpath': {
+        const ty = this.expr(s.target);
+        this.checkPath(s.target, s);
+        this.expectType(s.value, ty, `the field '${s.target.name}'`); break;
+      }
+      case 'expr':
+        if (s.value.kind !== 'call' && s.value.kind !== 'mcall') this.err('this expression does nothing; use a call or an assignment', s);
+        this.stmtCall = s.value;
+        this.expr(s.value); break;
+    }
+  }
+  pathText(t) { return t.kind === 'var' ? t.name : t.kind === 'field' ? `${this.pathText(t.e)}.${t.name}` : t.kind === 'index' ? `${this.pathText(t.e)}[...]` : 'it'; }
+  // a path like  x  x.f  x.f.g  xs[0].f  can be changed if it starts at a variable we may change
+  checkPath(t, node) {
+    if (t.kind === 'field' || t.kind === 'index') return this.checkPath(t.e, node);
+    if (t.kind !== 'var') this.err('only a variable (or a field of one) can be changed, not a computed value', node);
+    const name = t.name;
+    if (name === 'self') {
+      if (this.curMethod && this.curMethod.ret !== UNIT)
+        this.err(`method '${this.curMethod.name}' returns a value, so it cannot change self; return a changed copy with 'with', or make it return nothing`, node);
+      return;
+    }
+    for (let i = this.scopes.length - 1; i >= 0; i--) {
+      if (name in this.scopes[i]) {
+        if (this.scopes[i]['\0' + name]) this.err(`'${name}' is a copy of a list item, so changing it would be lost; change the list instead, like: xs[0].field = value`, node);
+        return;
+      }
+    }
+    if (name in this.states) return;
+    this.err(`'${name}' cannot be changed`, node);
+  }
+  expectType(e, want, what) {
+    const got = this.expr(e, want);
+    if (!teq(got, want)) {
+      const hint = want === TEXT && (got === INT || got === BOOL) ? ` (use toText(...) to convert ${tname(got)} to Text)` : '';
+      this.err(`${what} needs ${tname(want)} but this is ${tname(got)}${hint}`, e);
+    }
+  }
+  expr(e, expected) {
+    switch (e.kind) {
+      case 'int': return INT;
+      case 'str': return TEXT;
+      case 'bool': return BOOL;
+      case 'color': return COLOR;
+      case 'float': return FLOAT;
+      case 'var': {
+        const ty = this.lookup(e.name);
+        if (ty === undefined) {
+          if (e.name === 'self') this.err("'self' only exists inside a struct's methods", e);
+          if (e.name in this.structs) this.err(`'${e.name}' is a struct; create one like ${e.name}(${this.structs[e.name].fields.map(f => f[0] + ': ...').join(', ')})`, e);
+          if (e.name in this.fns || e.name in BUILTINS) this.err(`'${e.name}' is a function; call it like ${e.name}(...)`, e);
+          this.err(`unknown name '${e.name}'`, e);
+        }
+        return ty;
+      }
+      case 'list': {
+        if (!e.items.length) {
+          if (isList(expected)) return expected;
+          this.err('cannot tell what an empty list holds; add a type, e.g. let xs: List<Int> = []', e);
+        }
+        const first = this.expr(e.items[0], isList(expected) ? expected[1] : undefined);
+        for (const it of e.items.slice(1)) this.expectType(it, first, 'every list item');
+        return ['List', first];
+      }
+      case 'un':
+        if (e.op === '!') { this.expectType(e.e, BOOL, "'!'"); return BOOL; }
+        { const t = this.expr(e.e); if (t !== INT && t !== FLOAT) this.err(`unary '-' needs Int or Float but this is ${tname(t)}`, e.e); return t; }
+      case 'bin': return this.binary(e);
+      case 'index': {
+        const lt = this.expr(e.e);
+        if (!isList(lt)) this.err(`can only index a List, not ${tname(lt)}`, e);
+        this.expectType(e.idx, INT, 'a list index');
+        return lt[1];
+      }
+      case 'call': return this.call(e, expected);
+      case 'construct': {
+        const st = this.structs[e.name], given = new Set();
+        for (const [fname, val, fpos] of e.fields) {
+          const f = st.fields.find(x => x[0] === fname);
+          if (!f) this.err(`${e.name} has no field '${fname}' (its fields are ${st.fields.map(x => x[0]).join(', ')})`, { pos: fpos });
+          if (given.has(fname)) this.err(`field '${fname}' is given twice`, { pos: fpos });
+          given.add(fname);
+          this.expectType(val, f[1], `field '${fname}' of ${e.name}`);
+        }
+        const missing = st.fields.filter(f => !given.has(f[0]));
+        if (missing.length) this.err(`${e.name} needs ${missing.map(f => `${f[0]}: ${tname(f[1])}`).join(', ')}`, e);
+        return e.name;
+      }
+      case 'mcall': {
+        const isStmt = this.stmtCall === e; this.stmtCall = null;
+        const t = this.expr(e.recv);
+        if (typeof t !== 'string' || !(t in this.structs)) this.err(`only a struct has methods, but this is ${tname(t)}`, e);
+        const m = this.methods[`${t}.${e.name}`];
+        if (!m) {
+          const have = this.structs[t].methods.map(x => x.name);
+          const isField = this.structs[t].fields.some(f => f[0] === e.name);
+          this.err(`${t} has no method '${e.name}'${isField ? ' (it is a field; leave off the brackets)' : ` (its methods are ${have.join(', ') || 'none'})`}`, e);
+        }
+        if (e.args.length !== m.params.length) this.err(`${e.name}() takes ${m.params.length} argument(s) but got ${e.args.length}`, e);
+        e.args.forEach((a, i) => this.expectType(a, m.params[i], `an argument of ${e.name}()`));
+        e.method = `${t}.${e.name}`;
+        if (m.ret !== UNIT) return m.ret;
+        // a method that returns nothing may change the struct, so it must run on a variable and be its own statement
+        if (!isStmt) this.err(`${e.name}() may change ${this.pathText(e.recv)}, so use it as its own statement, like: ${this.pathText(e.recv)}.${e.name}(...)`, e);
+        this.checkPath(e.recv, e);
+        e.writeBack = true;
+        return UNIT;
+      }
+      case 'field': {
+        const t = this.expr(e.e);
+        if (typeof t !== 'string' || !(t in this.structs)) this.err(`only a struct has fields, but this is ${tname(t)}`, e);
+        const f = this.structs[t].fields.find(x => x[0] === e.name);
+        if (!f) this.err(`${t} has no field '${e.name}' (its fields are ${this.structs[t].fields.map(x => x[0]).join(', ')})`, e);
+        return f[1];
+      }
+      case 'with': {
+        const t = this.expr(e.e);
+        if (typeof t !== 'string' || !(t in this.structs)) this.err(`'with' needs a struct on its left, but this is ${tname(t)}`, e);
+        const seen = new Set();
+        for (const [fname, val, fpos] of e.updates) {
+          const f = this.structs[t].fields.find(x => x[0] === fname);
+          if (!f) this.err(`${t} has no field '${fname}' (its fields are ${this.structs[t].fields.map(x => x[0]).join(', ')})`, { pos: fpos });
+          if (seen.has(fname)) this.err(`field '${fname}' is changed twice`, { pos: fpos });
+          seen.add(fname);
+          this.expectType(val, f[1], `field '${fname}' of ${t}`);
+        }
+        return t;
+      }
+    }
+    throw new Error('unknown expression ' + e.kind);
+  }
+  binary(e) {
+    const op = e.op;
+    if (op === '&&' || op === '||') {
+      this.expectType(e.l, BOOL, `'${op}'`); this.expectType(e.r, BOOL, `'${op}'`); return BOOL;
+    }
+    const lt = this.expr(e.l), rt = this.expr(e.r);
+    if (op === '==' || op === '!=') {
+      if (!teq(lt, rt)) this.err(`cannot compare ${tname(lt)} with ${tname(rt)}`, e);
+      return BOOL;
+    }
+    if (op === '+' && lt === TEXT && rt === TEXT) return TEXT;
+    if (op === '+' && isList(lt) && teq(lt, rt)) return lt;
+    e.opType = lt;
+    if ((lt === FLOAT || rt === FLOAT) && lt !== rt && (lt === INT || rt === INT))
+      this.err(`'${op}' cannot mix Int and Float (use toFloat(...) to turn an Int into a Float)`, e);
+    if (lt === FLOAT && rt === FLOAT) {
+      if (op === '%') this.err("'%' only works on Int", e);
+      return ['<', '>', '<=', '>='].includes(op) ? BOOL : FLOAT;
+    }
+    if (lt !== INT || rt !== INT) {
+      const hint = op === '+' && (lt === TEXT || rt === TEXT) ? ' (use toText(...) to join numbers into Text)' : '';
+      this.err(`'${op}' cannot be used on ${tname(lt)} and ${tname(rt)}${hint}`, e);
+    }
+    return ['<', '>', '<=', '>='].includes(op) ? BOOL : INT;
+  }
+  call(e, expected) {
+    const name = e.name;
+    if (name in this.fns) {
+      const [params, ret] = this.fns[name];
+      if (e.args.length !== params.length) this.err(`${name}() takes ${params.length} argument(s) but got ${e.args.length}`, e);
+      e.args.forEach((a, i) => this.expectType(a, params[i], `an argument of ${name}()`));
+      return ret;
+    }
+    if (name in BUILTINS) return this.builtin(e, expected);
+    this.err(`unknown function '${name}'`, e);
+  }
+  builtin(e, expected) {
+    const { name, args } = e;
+    if (args.length !== BUILTINS[name]) this.err(`${name}() takes ${BUILTINS[name]} argument(s) but got ${args.length}`, e);
+    switch (name) {
+      case 'toText': {
+        const t = this.expr(args[0]);
+        if (t !== INT && t !== FLOAT && t !== BOOL && t !== TEXT) this.err(`toText() works on Int, Float, Bool and Text, not ${tname(t)}`, e);
+        e.argType = t;
+        return TEXT;
+      }
+      case 'len': {
+        const t = this.expr(args[0]);
+        if (t !== TEXT && !isList(t)) this.err(`len() works on Text and List, not ${tname(t)}`, e);
+        return INT;
+      }
+      case 'append': {
+        const lt = this.expr(args[0], expected);
+        if (!isList(lt)) this.err(`append() needs a List first, not ${tname(lt)}`, args[0]);
+        this.expectType(args[1], lt[1], 'the appended item'); return lt;
+      }
+      case 'removeAt': {
+        const lt = this.expr(args[0]);
+        if (!isList(lt)) this.err(`removeAt() needs a List first, not ${tname(lt)}`, args[0]);
+        this.expectType(args[1], INT, 'the index'); return lt;
+      }
+      case 'setAt': {
+        const lt = this.expr(args[0], expected);
+        if (!isList(lt)) this.err(`setAt() needs a List first, not ${tname(lt)}`, args[0]);
+        this.expectType(args[1], INT, 'the index'); this.expectType(args[2], lt[1], 'the new value'); return lt;
+      }
+      case 'slice': {
+        const lt = this.expr(args[0], expected);
+        if (!isList(lt)) this.err(`slice() needs a List first, not ${tname(lt)}`, args[0]);
+        this.expectType(args[1], INT, 'the start'); this.expectType(args[2], INT, 'the end'); return lt;
+      }
+      case 'reverse': {
+        const lt = this.expr(args[0], expected);
+        if (!isList(lt)) this.err(`reverse() needs a List, not ${tname(lt)}`, args[0]);
+        return lt;
+      }
+      case 'sort': case 'sortOrder': {
+        const lt = this.expr(args[0]);
+        if (!isList(lt) || (lt[1] !== INT && lt[1] !== FLOAT && lt[1] !== TEXT))
+          this.err(`${name}() needs a List of Int, Float or Text, not ${tname(lt)}`, args[0]);
+        return name === 'sort' ? lt : ['List', INT];
+      }
+      case 'toFloat': this.expectType(args[0], INT, 'toFloat()'); return FLOAT;
+      case 'round': case 'floor': case 'ceil': this.expectType(args[0], FLOAT, `${name}()`); return INT;
+      case 'sqrt': this.expectType(args[0], FLOAT, 'sqrt()'); return FLOAT;
+      case 'fixed': this.expectType(args[0], FLOAT, 'fixed()'); this.expectType(args[1], INT, 'the number of decimals'); return TEXT;
+      case 'toIntOr': this.expectType(args[0], TEXT, 'toIntOr()'); this.expectType(args[1], INT, 'the fallback'); return INT;
+      case 'toFloatOr': this.expectType(args[0], TEXT, 'toFloatOr()'); this.expectType(args[1], FLOAT, 'the fallback'); return FLOAT;
+      case 'range': this.expectType(args[0], INT, 'range()'); return ['List', INT];
+      case 'trim': case 'upper': case 'lower': this.expectType(args[0], TEXT, `${name}()`); return TEXT;
+      case 'contains': this.expectType(args[0], TEXT, 'contains()'); this.expectType(args[1], TEXT, 'contains()'); return BOOL;
+      case 'join': this.expectType(args[0], ['List', TEXT], 'join()'); this.expectType(args[1], TEXT, 'join()'); return TEXT;
+      case 'rgb': args.forEach(a => this.expectType(a, INT, 'rgb()')); return COLOR;
+    }
+  }
+  checkInput(t, placeholder, what = 'input', want = TEXT) {
+    const eg = want === TEXT ? '""' : '0';
+    if (t.kind === 'var') {
+      const ty = this.states[t.name];
+      if (ty === undefined) this.err(`'${t.name}' is not a state; declare it with: state ${t.name}: ${tname(want)} = ${eg}`, t);
+      if (ty !== want) this.err(`${what} can only edit ${tname(want)} state, but '${t.name}' is ${tname(ty)}`, t);
+    } else {
+      if (t.kind !== 'field' && t.kind !== 'index') this.err(`${what} edits a ${tname(want)} state, or a place inside one like names[i]`, t);
+      const ty = this.expr(t);
+      if (ty !== want) this.err(`${what} can only edit ${tname(want)}, but this is ${tname(ty)}`, t);
+      this.checkPath(t, t);
+    }
+    if (placeholder) this.expectType(placeholder, TEXT, 'a placeholder');
+  }
+  checkChoice(it, kind) {   // select and radio: a Text place, and the list of options
+    this.checkInput(it.target, it.placeholder, kind);
+    this.expectType(it.options, ['List', TEXT], `the options of a ${kind}`);
+    this.checkMods(it.mods, kind, it);
+  }
+  checkbox(it) {
+    this.expectType(it.e, BOOL, 'a checkbox');
+    if (it.label) this.expectType(it.label, TEXT, 'a checkbox label');
+    this.checkMods(it.mods, 'checkbox', it);
+    if (it.action) { this.ret = null; this.block(it.action); }
+    else if (!(it.e.kind === 'var' && it.e.name in this.states && !this.scopes.some(sc => it.e.name in sc)))
+      this.err('a checkbox with no -> must name a Bool state, like: checkbox done "Finished"  (or add an action: checkbox flags[i] "x" -> ...)', it.e);
+  }
+  // ---- view
+  view(items) {
+    for (const it of items) {
+      switch (it.kind) {
+        case 'heading': case 'text': case 'bullet':
+          this.expectType(it.e, TEXT, `'${it.kind}'`); this.checkMods(it.mods, it.kind, it); break;
+        case 'para':
+          this.checkMods(it.mods, 'para', it);
+          for (const sp of it.spans) { this.expectType(sp.e, TEXT, "'span'"); this.checkMods(sp.mods, 'span', sp); }
+          break;
+        case 'button':
+          this.expectType(it.label, TEXT, 'a button label'); this.checkMods(it.mods, 'button', it);
+          this.ret = null; this.block(it.action); break;
+        case 'checkbox': this.checkbox(it); break;
+        case 'input': this.checkInput(it.target, it.placeholder); this.checkMods(it.mods, 'input', it); break;
+        case 'every':
+          this.expectType(it.ms, INT, 'the time between ticks (in milliseconds)');
+          if (it.when) this.expectType(it.when, BOOL, "'every ... when'");
+          this.ret = null; this.block(it.action); break;
+        case 'textarea': this.checkInput(it.target, it.placeholder, 'textarea'); this.checkMods(it.mods, 'textarea', it); break;
+        case 'slider':
+          this.checkInput(it.target, null, 'slider', INT);
+          this.expectType(it.lo, INT, 'the slider start'); this.expectType(it.hi, INT, 'the slider end');
+          this.checkMods(it.mods, 'slider', it); break;
+        case 'select': case 'radio': this.checkChoice(it, it.kind); break;
+        case 'row': case 'column': this.checkMods(it.mods, it.kind, it); this.nest++; this.view(it.body); this.nest--; break;
+        case 'grid':
+          this.expectType(it.cols, INT, 'the number of grid columns'); this.checkMods(it.mods, 'grid', it);
+          this.nest++; this.view(it.body); this.nest--; break;
+        case 'modal': {
+          if (this.nest) this.err('a modal must be directly in the view, not inside a row, a column or another modal', it);
+          this.expectType(it.e, BOOL, 'a modal');
+          this.checkMods(it.mods, 'modal', it);
+          if (it.action) { this.ret = null; this.block(it.action); }
+          else if (!(it.e.kind === 'var' && it.e.name in this.states && !this.scopes.some(sc => it.e.name in sc)))
+            this.err('a modal with no -> must name a Bool state, like: modal open { ... }  (or add an action: modal step > 0 -> step = 0 { ... })', it.e);
+          this.nest++; this.view(it.body); this.nest--; break;
+        }
+        case 'table': {
+          this.checkMods(it.mods, 'table', it);
+          const save = this.tbl; this.tbl = { cols: null, header: false };
+          this.view(it.body); this.tbl = save; break;
+        }
+        case 'header': case 'cells': {
+          const t = this.tbl;
+          let n = 0;
+          for (const c of it.cells) {
+            if (c.kind === 'select') { this.checkInput(c.cond, c.e, 'select'); this.expectType(c.opts, ['List', TEXT], 'the options of a select'); }
+            else if (c.kind === 'input') this.checkInput(c.cond, c.e);
+            else if (c.kind === 'checkbox') this.checkbox({ e: c.cond, label: c.e, mods: [], action: c.action });
+            else this.expectType(c.e, TEXT, c.kind === 'text' ? 'a table cell' : `a ${c.kind} label`);
+            if (c.span < 1) this.err('a cell must span at least 1 column', { pos: c.spanPos });
+            this.checkMods(c.mods, c.kind === 'text' ? 'cellrow' : c.kind, c);
+            if (c.kind !== 'text') {
+              if (c.target) this.expectType(c.target, TEXT, 'a link target');
+              if (c.action) { this.ret = null; this.block(c.action); }
+            }
+            n += c.span;
+          }
+          if (it.kind === 'header') {
+            if (t.header || t.cols !== null) this.err('a table can have one header, and it must come first', it);
+            t.header = true;
+          }
+          if (t.cols === null) t.cols = n;
+          else if (t.cols !== n) this.err(`this row has ${n} cell(s) but the table has ${t.cols} column(s)`, it);
+          break;
+        }
+        case 'vif':
+          this.expectType(it.cond, BOOL, 'an if condition');
+          this.scoped(it.then); this.scoped(it.other); break;
+        case 'vfor': {
+          const ity = this.expr(it.iter);
+          if (!isList(ity)) this.err(`can only loop over a List, not ${tname(ity)}`, it.iter);
+          this.scopes.push({ [it.var]: ity[1], ['\0' + it.var]: true }); this.view(it.body); this.scopes.pop(); break;
+        }
+        case 'link':
+          this.expectType(it.label, TEXT, 'a link label');
+          if (it.target) this.expectType(it.target, TEXT, 'a link target');
+          this.checkMods(it.mods, 'link', it);
+          if (it.action) { this.ret = null; this.block(it.action); }
+          break;
+        case 'image': {
+          this.expectType(it.e, TEXT, "'image'");
+          this.checkMods(it.mods, 'image', it);
+          const assets = this.opts.assets;
+          if (assets && it.e.kind === 'str') {
+            const v = it.e.v;
+            if (!/^(https?:|data:)/.test(v) && !assets.includes(v))
+              this.err(`no image called "${v}" (add one in the Images tab, or use a web address). Available: ${assets.join(', ') || 'none'}`, it.e);
+          }
+          break;
+        }
+      }
+    }
+  }
+  scoped(items) { this.scopes.push({}); this.view(items); this.scopes.pop(); }
+}
+
+// ---------------------------------------------------------------- runtime
+class Return { constructor(v) { this.value = v; } }
+
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+const deepEq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+class Page {
+  constructor(src, opts) {
+    this.prog = buildProgram(src, opts);
+    new Checker(this.prog, opts).run();
+    this.title = this.prog.title || 'Untitled';
+    this.fns = {}; this.styles = {}; this.views = {}; this.structs = {}; this.methods = {};
+    for (const st of this.prog.structs) { this.structs[st.name] = st; for (const m of st.methods) this.methods[`${st.name}.${m.name}`] = m; }
+    for (const v of this.prog.views) this.views[v.name] = v;
+    this.screen = this.prog.views[0].name; this.history = [];
+    for (const f of this.prog.fns) this.fns[f.name] = f;
+    for (const s of this.prog.styles) this.styles[s.name] = s;
+    this.state = {};
+    // `saved state` values the host kept from an earlier visit (opts.saved = { name: value }); a value of the
+    // wrong type for the declaration is ignored, so changing a state's type never breaks the page
+    this.savedNames = this.prog.states.filter(s => s.saved).map(s => s.name);
+    for (const s of this.prog.states) {
+      const keep = s.saved && opts && opts.saved && Object.prototype.hasOwnProperty.call(opts.saved, s.name) && this.fits(opts.saved[s.name], s.type);
+      this.state[s.name] = keep ? JSON.parse(JSON.stringify(opts.saved[s.name])) : this.eval(s.init, [{}]);
+    }
+  }
+  fits(v, ty) {
+    if (ty === INT) return Number.isSafeInteger(v);
+    if (ty === FLOAT) return typeof v === 'number' && Number.isFinite(v);
+    if (ty === TEXT) return typeof v === 'string' && v.length <= 10000000;
+    if (ty === BOOL) return typeof v === 'boolean';
+    if (ty === COLOR) return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+    if (ty === ALIGN) return typeof v === 'string' && Object.prototype.hasOwnProperty.call(ALIGNS, v);
+    if (ty === FONT) return typeof v === 'string' && FONTS.includes(v);
+    if (isList(ty)) return Array.isArray(v) && v.length <= 1000000 && v.every(x => this.fits(x, ty[1]));
+    const st = this.structs[ty];
+    if (!st || v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+    const keys = Object.keys(v);
+    return keys.length === st.fields.length && st.fields.every(f => keys.includes(f[0]) && this.fits(v[f[0]], f[1]));
+  }
+  // the values of the `saved state`s as JSON text for the host to keep, or null if there are none or they
+  // are over 64 KB (the host should then keep nothing and may tell the person)
+  savedJSON() {
+    if (!this.savedNames.length) return null;
+    const out = {}; for (const n of this.savedNames) out[n] = this.state[n];
+    const j = JSON.stringify(out);
+    return j.length <= 65536 ? j : null;
+  }
+  get savedTooBig() { return this.savedNames.length > 0 && this.savedJSON() === null; }
+  get screens() { return this.prog.views.map(v => v.name); }
+  goto(name) {
+    if (name === this.screen) return;
+    this.history.push(this.screen); if (this.history.length > 50) this.history.shift();
+    this.screen = name;
+  }
+  back() { if (this.history.length) this.screen = this.history.pop(); }
+  rtErr(msg, node) { throw new TernError(msg, node.pos, 'runtime error'); }
+  lookup(name, scopes) {
+    for (let i = scopes.length - 1; i >= 0; i--) if (name in scopes[i]) return scopes[i][name];
+    if (name in this.state) return this.state[name];
+    return CONST_VALUES[name];
+  }
+  execBlock(stmts, scopes) {
+    scopes.push({});
+    try { for (const s of stmts) this.exec(s, scopes); } finally { scopes.pop(); }
+  }
+  exec(s, scopes) {
+    switch (s.kind) {
+      case 'let': scopes[scopes.length - 1][s.name] = this.eval(s.value, scopes); break;
+      case 'assign': {
+        const v = this.eval(s.value, scopes);
+        for (let i = scopes.length - 1; i >= 0; i--) if (s.name in scopes[i]) { scopes[i][s.name] = v; return; }
+        this.state[s.name] = v; break;
+      }
+      case 'if': this.execBlock(this.eval(s.cond, scopes) ? s.then : s.other, scopes); break;
+      case 'for':
+        for (const item of this.eval(s.iter, scopes).slice()) {
+          scopes.push({ [s.var]: item });
+          try { this.execBlock(s.body, scopes); } finally { scopes.pop(); }
+        }
+        break;
+      case 'goto': this.goto(s.name); break;
+      case 'back': this.back(); break;
+      case 'return': throw new Return(s.value === null ? null : this.eval(s.value, scopes));
+      case 'expr':
+        if (s.value.kind === 'mcall' && s.value.writeBack) this.runMutating(s.value, scopes);
+        else this.eval(s.value, scopes);
+        break;
+      case 'setpath': {
+        const v = this.eval(s.value, scopes);
+        this.writePath(this.locate(s.target, scopes), () => v, scopes);
+        break;
+      }
+    }
+  }
+  // ---- changing a field or a method's self. Values are never shared, so a change builds a new value
+  // for the whole path and stores it back in the variable the path starts from.
+  locate(t, scopes) {                    // evaluate every list index once, giving { root, steps }
+    if (t.kind === 'var') return { root: t.name, steps: [], node: t };
+    const loc = this.locate(t.e, scopes);
+    loc.steps.push(t.kind === 'field' ? { field: t.name } : { index: this.eval(t.idx, scopes), node: t });
+    return loc;
+  }
+  readPath(loc, scopes) {
+    let v = this.lookup(loc.root, scopes);
+    for (const st of loc.steps) {
+      if ('field' in st) { v = v[st.field]; continue; }
+      if (!(st.index >= 0 && st.index < v.length)) this.rtErr(`index ${st.index} is outside the list (length ${v.length})`, st.node);
+      v = v[st.index];
+    }
+    return v;
+  }
+  writePath(loc, f, scopes) {
+    const apply = (cur, k) => {
+      if (k === loc.steps.length) return f(cur);
+      const st = loc.steps[k];
+      if ('field' in st) return Object.assign({}, cur, { [st.field]: apply(cur[st.field], k + 1) });
+      if (!(st.index >= 0 && st.index < cur.length)) this.rtErr(`index ${st.index} is outside the list (length ${cur.length})`, st.node);
+      const copy = cur.slice(); copy[st.index] = apply(cur[st.index], k + 1); return copy;
+    };
+    let holder = this.state;
+    for (let i = scopes.length - 1; i >= 0; i--) if (loc.root in scopes[i]) { holder = scopes[i]; break; }
+    holder[loc.root] = apply(holder[loc.root], 0);
+  }
+  runMutating(e, scopes) {
+    const loc = this.locate(e.recv, scopes);
+    const cur = this.readPath(loc, scopes);
+    const args = e.args.map(a => this.eval(a, scopes));
+    const out = this.runBody(this.methods[e.method], { self: cur }, args, e, e.method);
+    this.writePath(loc, () => out.vars.self, scopes);
+  }
+  eval(e, scopes) {
+    switch (e.kind) {
+      case 'int': case 'str': case 'bool': case 'color': case 'float': return e.v;
+      case 'var': return this.lookup(e.name, scopes);
+      case 'list': return e.items.map(i => this.eval(i, scopes));
+      case 'un': { const v = this.eval(e.e, scopes); return e.op === '!' ? !v : -v; }
+      case 'index': {
+        const lst = this.eval(e.e, scopes), i = this.eval(e.idx, scopes);
+        if (!(i >= 0 && i < lst.length)) this.rtErr(`index ${i} is outside the list (length ${lst.length})`, e);
+        return lst[i];
+      }
+      case 'bin': return this.binop(e, scopes);
+      case 'call': return this.call(e, scopes);
+      case 'mcall': {
+        const self = this.eval(e.recv, scopes);
+        const args = e.args.map(a => this.eval(a, scopes));
+        return this.runBody(this.methods[e.method], { self }, args, e, e.method).ret;
+      }
+      case 'construct': {
+        const o = {};
+        for (const f of this.structs[e.name].fields) o[f[0]] = this.eval(e.fields.find(x => x[0] === f[0])[1], scopes);
+        return o;
+      }
+      case 'field': return this.eval(e.e, scopes)[e.name];
+      case 'with': {
+        const o = Object.assign({}, this.eval(e.e, scopes));
+        for (const [fname, val] of e.updates) o[fname] = this.eval(val, scopes);
+        return o;
+      }
+    }
+  }
+  binop(e, scopes) {
+    const op = e.op;
+    if (op === '&&') return this.eval(e.l, scopes) && this.eval(e.r, scopes);
+    if (op === '||') return this.eval(e.l, scopes) || this.eval(e.r, scopes);
+    const a = this.eval(e.l, scopes), b = this.eval(e.r, scopes);
+    switch (op) {
+      case '+': return Array.isArray(a) ? a.concat(b) : a + b;
+      case '-': return a - b;
+      case '*': return a * b;
+      case '/': case '%':
+        if (b === 0) this.rtErr('division by zero', e);
+        if (op === '/') return e.opType === FLOAT ? a / b : Math.floor(a / b);
+        return ((a % b) + b) % b;
+      case '==': return deepEq(a, b);
+      case '!=': return !deepEq(a, b);
+      case '<': return a < b; case '>': return a > b; case '<=': return a <= b; case '>=': return a >= b;
+    }
+  }
+  // runs a function or method body; `vars` holds `self` for methods. Returns the result and the final variables.
+  runBody(f, vars, args, e, name) {
+    const frame = [{}, Object.assign(vars, Object.fromEntries(f.params.map((p, i) => [p[0], args[i]])))];
+    try { this.execBlock(f.body, frame); }
+    catch (r) {
+      if (r instanceof Return) return { ret: r.value, vars: frame[1] };
+      if (r instanceof RangeError) this.rtErr(`${name}() recursed too deeply`, e);
+      throw r;
+    }
+    return { ret: null, vars: frame[1] };
+  }
+  call(e, scopes) {
+    const args = e.args.map(a => this.eval(a, scopes));
+    const name = e.name;
+    if (name in this.fns) {
+      return this.runBody(this.fns[name], {}, args, e, name).ret;
+    }
+    switch (name) {
+      case 'toText':
+        if (typeof args[0] === 'boolean') return args[0] ? 'true' : 'false';
+        if (e.argType === FLOAT) return Number.isInteger(args[0]) ? args[0].toFixed(1) : String(+args[0].toPrecision(12));
+        return String(args[0]);
+      case 'toFloat': return args[0];
+      case 'round': return Math.round(args[0]);
+      case 'floor': return Math.floor(args[0]);
+      case 'ceil': return Math.ceil(args[0]);
+      case 'sqrt':
+        if (args[0] < 0) this.rtErr('cannot take the square root of a negative number', e);
+        return Math.sqrt(args[0]);
+      case 'fixed': return args[0].toFixed(clamp(args[1], 0, 12));
+      case 'toIntOr': return /^\s*-?\d+\s*$/.test(args[0]) ? parseInt(args[0], 10) : args[1];
+      case 'toFloatOr': return /^\s*-?(\d+\.?\d*|\.\d+)\s*$/.test(args[0]) ? parseFloat(args[0]) : args[1];
+      case 'len': return args[0].length;
+      case 'append': return args[0].concat([args[1]]);
+      case 'removeAt':
+        if (!(args[1] >= 0 && args[1] < args[0].length)) this.rtErr(`index ${args[1]} is outside the list (length ${args[0].length})`, e);
+        return args[0].slice(0, args[1]).concat(args[0].slice(args[1] + 1));
+      case 'setAt': {
+        if (!(args[1] >= 0 && args[1] < args[0].length)) this.rtErr(`index ${args[1]} is outside the list (length ${args[0].length})`, e);
+        const copy = args[0].slice(); copy[args[1]] = args[2]; return copy;
+      }
+      case 'slice': {
+        const n = args[0].length, a = clamp(args[1], 0, n), b = clamp(args[2], 0, n);
+        return b > a ? args[0].slice(a, b) : [];
+      }
+      case 'reverse': return args[0].slice().reverse();
+      case 'sort': case 'sortOrder': {
+        const xs = args[0], cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);   // Text compares by UTF-16 code unit
+        const idx = xs.map((_, i) => i).sort((i, j) => cmp(xs[i], xs[j]) || i - j);
+        return name === 'sort' ? idx.map(i => xs[i]) : idx;
+      }
+      case 'range': return Array.from({ length: clamp(args[0], 0, 10000) }, (_, i) => i);
+      case 'trim': return args[0].trim();
+      case 'upper': return args[0].toUpperCase();
+      case 'lower': return args[0].toLowerCase();
+      case 'contains': return args[0].includes(args[1]);
+      case 'join': return args[0].join(args[1]);
+      case 'rgb': return '#' + args.map(v => clamp(v, 0, 255).toString(16).padStart(2, '0')).join('');
+    }
+  }
+
+  // ---- style resolution
+  applyMod(out, m, scopes) {
+    if (FLAGS.has(m.name)) out[m.name] = m.when === null ? true : !!this.eval(m.when, scopes);
+    else if (m.name === 'size') out.size = clamp(this.eval(m.value, scopes), 6, 96);
+    else if (m.name === 'padding' || m.name === 'gap' || m.name === 'margin') out[m.name] = clamp(this.eval(m.value, scopes), 0, 64);
+    else if (m.name === 'grow') out.grow = clamp(this.eval(m.value, scopes), 0, 12);
+    else if (m.name === 'radius') out.radius = clamp(this.eval(m.value, scopes), 0, 999);
+    else if (m.name === 'width' || m.name === 'height' || m.name === 'maxwidth' || m.name === 'minwidth') out[m.name] = clamp(this.eval(m.value, scopes), 1, 2000);
+    else out[m.name] = this.eval(m.value, scopes);
+  }
+  resolve(mods, kind, scopes) {
+    const out = {}, allowed = ALLOWED[kind];
+    for (const m of mods) {
+      if (m.name === 'style') {
+        for (const [n] of m.value) for (const sm of this.styles[n].mods) if (allowed.has(sm.name)) this.applyMod(out, sm, [{}]);
+      } else this.applyMod(out, m, scopes);
+    }
+    return out;
+  }
+
+  inputNode(target, name, placeholder, scopes, mods = [], kind = 'input') {
+    const snap = scopes.map(s => ({ ...s }));
+    return this.lock({ t: 'input', name, value: this.readPath(this.locate(target, scopes), scopes),
+      placeholder: placeholder ? this.eval(placeholder, scopes) : '',
+      style: this.resolve(mods, kind, scopes),
+      set: v => { this.writePath(this.locate(target, snap), () => v, snap); } });
+  }
+  // a disabled control does nothing when it is tapped or edited, whatever the host does
+  lock(n) {
+    if (n.style && n.style.disabled) { if (n.click) n.click = () => {}; if (n.set) n.set = () => {}; }
+    return n;
+  }
+  checkboxNode(it, scopes) {
+    const snap = scopes.map(s => ({ ...s }));
+    const name = it.action ? null : it.e.name;
+    return this.lock({ t: 'checkbox', label: it.label ? this.eval(it.label, scopes) : '', checked: !!this.eval(it.e, scopes),
+      style: this.resolve(it.mods, 'checkbox', scopes),
+      click: it.action ? () => this.execBlock(it.action, snap) : () => { this.state[name] = !this.state[name]; } });
+  }
+  // ---- render tree
+  render() { this.timerSeq = 0; this.timers = []; const out = []; this.view(this.views[this.screen].body, [{}], out); return out; }
+  // every <ms> ... draws nothing: it adds a timer to page.timers (after each render()), which the host runs on its
+  // schedule while it stays in the list. At least 100 ms apart, at most 4 timers at once, and a timer that fails 3 times in a row stops.
+  timerNode(it, scopes) {
+    if (it.when && !this.eval(it.when, scopes)) return null;
+    const n = this.timerSeq++;
+    if (n >= 4) return null;
+    const key = `${it.pos[0]}:${it.pos[1]}#${n}`;
+    this.faults = this.faults || {};
+    if ((this.faults[key] || 0) >= 3) return null;
+    const snap = scopes.map(s => ({ ...s }));
+    return { key, ms: clamp(this.eval(it.ms, scopes), 100, 3600000),
+      tick: () => {
+        try { this.execBlock(it.action, snap); this.faults[key] = 0; }
+        catch (e) {
+          this.faults[key] = (this.faults[key] || 0) + 1;
+          if (e instanceof TernError && this.faults[key] >= 3) e.msg += ' (this timer has stopped after 3 errors in a row)';
+          throw e;
+        }
+      } };
+  }
+  view(items, scopes, out) {
+    for (const it of items) {
+      switch (it.kind) {
+        case 'heading': case 'text': case 'bullet':
+          out.push({ t: it.kind, text: this.eval(it.e, scopes), style: this.resolve(it.mods, it.kind, scopes) }); break;
+        case 'para': {
+          const base = this.resolve(it.mods, 'para', scopes);
+          const inherit = { ...base }; delete inherit.align;
+          out.push({
+            t: 'para', style: base,
+            spans: it.spans.map(sp => ({ text: this.eval(sp.e, scopes), style: { ...inherit, ...this.resolve(sp.mods, 'span', scopes) } })),
+          });
+          break;
+        }
+        case 'button': {
+          const snap = scopes.map(s => ({ ...s }));
+          out.push(this.lock({ t: 'button', label: this.eval(it.label, scopes), style: this.resolve(it.mods, 'button', scopes),
+            click: () => this.execBlock(it.action, snap) }));
+          break;
+        }
+        case 'checkbox': {
+          out.push(this.checkboxNode(it, scopes)); break;
+        }
+        case 'grid': {
+          const kids = []; this.view(it.body, scopes, kids);
+          out.push({ t: 'grid', cols: clamp(this.eval(it.cols, scopes), 1, 12), children: kids, style: this.resolve(it.mods, 'grid', scopes) }); break;
+        }
+        case 'modal': {
+          if (!this.eval(it.e, scopes)) break;   // a closed modal draws nothing
+          const snap = scopes.map(s => ({ ...s })), kids = [];
+          this.view(it.body, scopes, kids);
+          out.push({ t: 'modal', children: kids, style: this.resolve(it.mods, 'modal', scopes),
+            close: it.action ? () => this.execBlock(it.action, snap) : () => { this.state[it.e.name] = false; } });
+          break;
+        }
+        case 'input': out.push(this.inputNode(it.target, it.name, it.placeholder, scopes, it.mods, 'input')); break;
+        case 'every': { const n = this.timerNode(it, scopes); if (n) this.timers.push(n); break; }
+        case 'textarea': { const n = this.inputNode(it.target, '', it.placeholder, scopes, it.mods, 'textarea'); n.t = 'textarea'; out.push(n); break; }
+        case 'slider': {
+          const n = this.inputNode(it.target, '', null, scopes, it.mods, 'slider');
+          n.t = 'slider'; n.lo = this.eval(it.lo, scopes); n.hi = this.eval(it.hi, scopes);
+          if (n.hi < n.lo) this.rtErr(`this slider ends (${n.hi}) before it starts (${n.lo})`, it);
+          n.value = clamp(n.value, n.lo, n.hi);
+          out.push(n); break;
+        }
+        case 'select': case 'radio': {
+          const n = this.inputNode(it.target, '', it.placeholder, scopes, it.mods, it.kind);
+          n.t = it.kind; n.options = this.eval(it.options, scopes).slice();
+          out.push(n); break;
+        }
+        case 'row': case 'column': {
+          const kids = []; this.view(it.body, scopes, kids);
+          out.push({ t: it.kind, children: kids, style: this.resolve(it.mods, it.kind, scopes) }); break;
+        }
+        case 'table': {
+          const kids = []; this.view(it.body, scopes, kids);
+          const h = kids.find(k => k.t === 'header');
+          const rows = kids.filter(k => k.t === 'cells');
+          out.push({ t: 'table', resizable: it.resizable, style: this.resolve(it.mods, 'table', scopes), header: h ? h.cells : null, rows: rows.map(k => k.cells),
+            hrow: h ? h.row : null, body: rows.map(k => k.row) });
+          break;
+        }
+        case 'header': case 'cells': {
+          const snap = scopes.map(s => ({ ...s })), cells = [], flat = [];
+          for (const c of it.cells) {
+            const text = this.eval(c.e, scopes);
+            const cell = { text, span: c.span, kind: c.kind };
+            if (c.kind === 'select') {
+              const sel = this.inputNode(c.cond, '', c.e, scopes);
+              cell.text = sel.value; cell.placeholder = sel.placeholder; cell.set = sel.set; cell.options = this.eval(c.opts, scopes).slice(); cells.push(cell);
+              flat.push('[select: ' + (sel.value || sel.placeholder) + ']'); for (let k = 1; k < c.span; k++) flat.push('');
+              continue;
+            }
+            if (c.kind === 'input') {
+              const inp = this.inputNode(c.cond, '', c.e, scopes);
+              cell.text = inp.value; cell.placeholder = inp.placeholder; cell.set = inp.set; cells.push(cell);
+              flat.push('[_' + inp.value + '_]'); for (let k = 1; k < c.span; k++) flat.push('');
+              continue;
+            }
+            if (c.kind === 'checkbox') {
+              const cb = this.checkboxNode({ e: c.cond, label: c.e, mods: c.mods, action: c.action }, scopes);
+              cell.checked = cb.checked; cell.click = cb.click; cell.style = cb.style; cells.push(cell);
+              flat.push((cb.checked ? '[x] ' : '[ ] ') + text); for (let k = 1; k < c.span; k++) flat.push('');
+              continue;
+            }
+            cell.style = this.resolve(c.mods, c.kind === 'text' ? 'cellrow' : c.kind, scopes);
+            if (c.kind !== 'text') {
+              cell.target = c.target ? this.eval(c.target, scopes) : null;
+              cell.click = c.action ? () => this.execBlock(c.action, snap) : null;
+              this.lock(cell);
+            }
+            cells.push(cell);
+            flat.push(text); for (let k = 1; k < c.span; k++) flat.push('');
+          }
+          out.push({ t: it.kind, cells: flat, row: { cells } });
+          break;
+        }
+        case 'vif': this.view(this.eval(it.cond, scopes) ? it.then : it.other, scopes, out); break;
+        case 'vfor':
+          for (const item of this.eval(it.iter, scopes).slice()) {
+            scopes.push({ [it.var]: item });
+            try { this.view(it.body, scopes, out); } finally { scopes.pop(); }
+          }
+          break;
+        case 'link': {
+          const snap = scopes.map(s => ({ ...s }));
+          out.push({ t: 'link', text: this.eval(it.label, scopes), target: it.target ? this.eval(it.target, scopes) : null,
+            click: it.action ? () => this.execBlock(it.action, snap) : null,
+            style: this.resolve(it.mods, 'link', scopes) });
+          break;
+        }
+        case 'image': {
+          const st = this.resolve(it.mods, 'image', scopes);
+          const alt = st.alt || ''; delete st.alt;
+          out.push({ t: 'image', src: this.eval(it.e, scopes), alt, style: st });
+          break;
+        }
+        case 'divider': out.push({ t: 'divider' }); break;
+      }
+    }
+  }
+}
+
+const load = (src, opts) => new Page(src, opts);
+
+// plain-text view, used by tests
+function renderText(nodes, indent = 0) {
+  const pad = '  '.repeat(indent), lines = [];
+  const mark = (txt, st) => { let t = txt; if (st.bold) t = `**${t}**`; if (st.italic) t = `_${t}_`; return t; };
+  for (const n of nodes) {
+    switch (n.t) {
+      case 'heading': lines.push(pad + n.text.toUpperCase()); break;
+      case 'text': lines.push(pad + mark(n.text, n.style)); break;
+      case 'bullet': lines.push(`${pad}* ${mark(n.text, n.style)}`); break;
+      case 'para': lines.push(pad + n.spans.map(s => mark(s.text, s.style)).join('')); break;
+      case 'button': lines.push(`${pad}[ ${n.label} ]`); break;
+      case 'grid': lines.push(`${pad}<grid ${n.cols}>`, ...renderText(n.children, indent + 1)); break;
+      case 'modal': lines.push(pad + '[modal]', ...renderText(n.children, indent + 1), pad + '[/modal]'); break;
+      case 'textarea': lines.push(`${pad}[textarea: ${(n.value || n.placeholder).split('\n')[0]}]`); break;
+      case 'slider': lines.push(`${pad}[slider: ${n.value} in ${n.lo}..${n.hi}]`); break;
+      case 'select': lines.push(`${pad}[select: ${n.value || n.placeholder}]`); break;
+      case 'radio': for (const o of n.options) lines.push(`${pad}(${o === n.value ? 'x' : ' '}) ${o}`); break;
+      case 'checkbox': lines.push(`${pad}[${n.checked ? 'x' : ' '}] ${n.label}`); break;
+      case 'input': lines.push(`${pad}[_${n.value || (n.placeholder ? `(${n.placeholder})` : '')}_]`); break;
+      case 'link': lines.push(`${pad}${n.text} -> ${n.target || '(action)'}`); break;
+      case 'image': lines.push(`${pad}[image: ${n.src}]`); break;
+      case 'divider': lines.push(pad + '-'.repeat(40)); break;
+      case 'table': {
+        const rows = (n.header ? [n.header] : []).concat(n.rows);
+        const widths = rows[0] ? rows[0].map((_, c) => Math.max(...rows.map(r => r[c].length))) : [];
+        rows.forEach((r, i) => {
+          lines.push(pad + '| ' + r.map((c, j) => c.padEnd(widths[j])).join(' | ') + ' |');
+          if (i === 0 && n.header) lines.push(pad + '|' + widths.map(w => '-'.repeat(w + 2)).join('|') + '|');
+        });
+        break;
+      }
+      case 'row': case 'column':
+        lines.push(`${pad}<${n.t}>`); lines.push(...renderText(n.children, indent + 1)); break;
+    }
+  }
+  return lines;
+}
+
+const api = { TernError, load, parse, renderText, COLORS, FONTS, version: '0.3' };
+if (typeof module !== 'undefined' && module.exports) module.exports = api;
+else root.Tern = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>/* Example pages for the playground and the tests. */
+(function (root) {
+const EXAMPLES = [
+{ id: 'welcome', name: 'Welcome', src: `page "Welcome to Tern"
+
+// A page = state (what it remembers), fn (what it can do), view (what it shows)
+state name: Text = ""
+
+fn greeting(who: Text): Text {
+  if trim(who) == "" {
+    return "Type your name above."
+  }
+  return "Hello, " + trim(who) + "!"
+}
+
+view {
+  heading "Welcome to Tern" color blue
+  text "A small, strongly typed language for web pages."
+  divider
+  input name placeholder "Your name"
+  text greeting(name) bold
+}
+` },
+
+{ id: 'counter', name: 'Counter', src: `page "Counter"
+
+state count: Int = 0
+state step: Int = 1
+
+fn bump(by: Int) {
+  count = count + by
+}
+
+fn describe(n: Int): Text {
+  if n == 0 { return "Nothing yet." }
+  if n < 0 { return "Below zero." }
+  if n % 2 == 0 { return "Even." }
+  return "Odd."
+}
+
+view {
+  heading "Counter"
+  text "Count: " + toText(count) size 28 bold
+  text describe(count) italic color gray
+  row {
+    button "-" -> bump(0 - step)
+    button "+" -> bump(step)
+    button "Reset" -> count = 0
+  }
+  text "Step size: " + toText(step)
+  row {
+    button "Step 1" -> step = 1
+    button "Step 5" -> step = 5
+    button "Step 10" -> step = 10
+  }
+}
+` },
+
+{ id: 'todo', name: 'Todo list', src: `page "Todo list"
+
+state items: List<Text> = ["Try Tern", "Break something on purpose"]
+state draft: Text = ""
+
+fn add() {
+  if trim(draft) != "" {
+    items = append(items, trim(draft))
+    draft = ""
+  }
+}
+
+view {
+  heading "Todo list"
+  row {
+    input draft placeholder "What needs doing?"
+    button "Add" -> add()
+  }
+  if len(items) == 0 {
+    text "All done!" color green bold
+  } else {
+    text toText(len(items)) + " item(s)" color gray
+  }
+  for i in range(len(items)) {
+    row {
+      text toText(i + 1) + ". " + items[i]
+      button "Done" -> items = removeAt(items, i)
+    }
+  }
+}
+` },
+
+{ id: 'styles', name: 'Style gallery', src: `page "Style gallery"
+
+// Named styles: define once, use anywhere
+style title { size 28 bold color blue }
+style note { italic color gray size 11 }
+style warning { bold color red background #fdecea }
+
+state pts: Int = 16
+
+view {
+  heading "Style gallery" color purple
+  text "Big, bold and blue" style title
+  text "A quiet note in gray italics." style note
+  text "Careful: this is a warning." style warning
+  divider
+  para {
+    span "You can mix "
+    span "bold" bold
+    span ", "
+    span "italic" italic
+    span ", "
+    span "underlined" underline
+    span ", "
+    span "struck" strike
+    span " and "
+    span "coloured" color orange bold
+    span " words in one sentence."
+  }
+  divider
+  text "Resize me" size pts
+  row {
+    button "A-" -> pts = pts - 2
+    button "A+" -> pts = pts + 2
+  }
+  text "Size is " + toText(pts) + " points" style note
+  text "Centered" align center color rgb(130, 80, 223)
+  text "Right aligned" align right
+}
+` },
+
+{ id: 'table', name: 'Price table', src: `page "Order"
+
+state names: List<Text> = ["Tea", "Coffee", "Cake"]
+state prices: List<Int> = [3, 4, 5]
+state qty: List<Int> = [2, 1, 3]
+
+fn money(n: Int): Text {
+  return "$" + toText(n)
+}
+
+fn total(): Int {
+  let sum = 0
+  for i in range(len(names)) {
+    sum = sum + prices[i] * qty[i]
+  }
+  return sum
+}
+
+view {
+  heading "Your order"
+  table {
+    header "Item", "Price", "Qty", "Subtotal"
+    for i in range(len(names)) {
+      cells names[i], money(prices[i]), toText(qty[i]), money(prices[i] * qty[i])
+    }
+  }
+  text "Total: " + money(total()) size 20 bold
+  row {
+    for i in range(len(names)) {
+      button "+ " + names[i] -> qty = setAt(qty, i, qty[i] + 1)
+    }
+  }
+}
+` },
+
+{ id: 'article', name: 'Article page', src: `page "Tern in five minutes"
+
+style lead { size 15 color gray italic }
+style callout { background #eef3fc padding 12 }
+
+view {
+  heading "Tern in five minutes"
+  text "A short guide to a very small language." style lead
+  divider
+  para {
+    span "Tern pages are made of "
+    span "state" bold
+    span ", "
+    span "functions" bold
+    span " and a "
+    span "view" bold
+    span ". Everything is type-checked before it runs."
+  }
+  heading "What you get" size 18
+  bullet "Text in any size, bold, italic, underline or strike"
+  bullet "Colours by name, by hex like #0b57d0, or rgb(r, g, b)"
+  bullet "Tables, lists and layout rows"
+  bullet "Named styles you write once and reuse"
+  heading "Quick comparison" size 18
+  table {
+    header "Type", "Example", "Holds"
+    cells "Int", "42", "whole numbers"
+    cells "Text", "\\"hi\\"", "words"
+    cells "Bool", "true", "yes or no"
+    cells "Color", "#0b57d0", "a colour"
+  }
+  column style callout {
+    text "Tip" bold color blue
+    text "Mistakes are reported with a line number before the page runs."
+  }
+}
+` },
+
+{ id: 'pages', name: 'Multi-page site', src: `page "Corner Cafe"
+
+style chip { background #eef3fc color blue radius 20 padding 8 border #c5d3f0 }
+style cta { background blue color white bold radius 10 padding 12 }
+
+state orders: Int = 0
+state names: List<Text> = ["Espresso", "Flat white", "Croissant"]
+state prices: List<Float> = [2.5, 3.2, 4.0]
+
+// Each "view name" is a page. Buttons and links move between them.
+view home {
+  image "mountains" width 320 radius 12 alt "Mountains at dawn"
+  heading "Corner Cafe" font display size 28
+  text "Small coffee shop. Slow mornings." font serif italic color gray
+  row {
+    button "Menu" style chip -> goto menu
+    button "About" style chip -> goto about
+  }
+  button "Order a coffee" style cta -> orders = orders + 1
+  text toText(orders) + " ordered today" color gray
+}
+
+view menu {
+  heading "Menu" font display
+  table {
+    header "Item", "Price"
+    for i in range(len(names)) {
+      cells names[i], "$" + fixed(prices[i], 2)
+    }
+  }
+  button "Back" -> back
+}
+
+view about {
+  heading "About us" font display
+  para {
+    span "We opened in "
+    span "2019" bold
+    span " and we are open every day."
+  }
+  row {
+    link "Home" -> goto home
+    link "Our website" to "https://example.com"
+  }
+}
+` },
+
+{ id: 'tip', name: 'Tip calculator', src: `page "Tip calculator"
+
+state bill: Text = ""
+state percent: Int = 15
+
+// Int and Float are different types. toFloat() converts, and
+// toFloatOr() turns typed text into a number (or uses the fallback).
+fn amount(): Float {
+  return toFloatOr(bill, 0.0)
+}
+
+fn tip(): Float {
+  return amount() * toFloat(percent) / 100.0
+}
+
+view {
+  heading "Tip calculator"
+  input bill placeholder "Bill amount, e.g. 42.50"
+  row {
+    button "10%" bold when percent == 10 -> percent = 10
+    button "15%" bold when percent == 15 -> percent = 15
+    button "20%" bold when percent == 20 -> percent = 20
+  }
+  text "Tip (" + toText(percent) + "%): $" + fixed(tip(), 2)
+  text "Total: $" + fixed(amount() + tip(), 2) size 22 bold
+}
+` },
+
+{ id: 'fonts', name: 'Fonts', src: `page "Fonts"
+
+state pick: Font = serif
+
+view {
+  heading "Fonts" font display
+  text "sans: The quick brown fox" font sans
+  text "serif: The quick brown fox" font serif
+  text "mono: The quick brown fox" font mono
+  text "display: The quick brown fox" font display size 18
+  text "hand: The quick brown fox" font hand size 20
+  text "rounded: The quick brown fox" font rounded
+  divider
+  text "Pick a font below" font pick size 22
+  row {
+    button "serif" -> pick = serif
+    button "hand" -> pick = hand
+    button "mono" -> pick = mono
+  }
+}
+` },
+
+{ id: 'images', name: 'Images', src: `page "Images"
+
+view {
+  heading "Images"
+  image "mountains" width 300 radius 12 alt "Mountains at dawn"
+  text "Rounded corners, 300 wide." color gray size 11
+  row {
+    image "avatar" width 64 height 64 radius 999 alt "A friendly face"
+    column {
+      text "Sam Rivera" bold
+      text "Photographer" italic color gray
+    }
+  }
+  image "sunset" width 300 border gray alt "Sunset over water"
+  image "logo" width 120 align center alt "Tern logo"
+  text "Add your own photos in the Images tab." italic color gray
+}
+` },
+
+{ id: 'buttons', name: 'Styled buttons', src: `page "Buttons"
+
+style primary { background blue color white bold radius 10 padding 12 }
+style ghost { color blue border blue radius 10 padding 10 background white }
+style danger { background red color white radius 6 padding 10 }
+style pill { background #e8f5e9 color green radius 999 padding 8 bold }
+
+state clicks: Int = 0
+state on: Bool = false
+
+view {
+  heading "Styled buttons"
+  button "Primary" style primary -> clicks = clicks + 1
+  button "Ghost" style ghost -> clicks = clicks + 1
+  button "Danger (resets)" style danger -> clicks = 0
+  button "Pill +5" style pill -> clicks = clicks + 5
+  button "Wide button" style primary width 280 -> clicks = clicks + 1
+  button "Serif italic" font serif italic size 16 -> clicks = clicks + 1
+  button "Toggle" style ghost bold when on -> on = !on
+  text "Clicks: " + toText(clicks) size 20 bold
+  text "Toggle is " + toText(on) color gray
+}
+` },
+
+{ id: 'quiz', name: 'Quiz', src: `page "Quiz"
+
+state questions: List<Text> = ["What is 2 + 2?", "Capital of France?", "Is 7 prime?"]
+state answers: List<Text> = ["4", "Paris", "yes"]
+state index: Int = 0
+state score: Int = 0
+state guess: Text = ""
+state feedback: Text = ""
+
+fn submit() {
+  if lower(trim(guess)) == lower(answers[index]) {
+    score = score + 1
+    feedback = "Correct!"
+  } else {
+    feedback = "Not quite. The answer was " + answers[index] + "."
+  }
+  guess = ""
+  index = index + 1
+}
+
+fn restart() {
+  index = 0
+  score = 0
+  feedback = ""
+}
+
+view {
+  heading "Quiz"
+  if index < len(questions) {
+    text "Question " + toText(index + 1) + ": " + questions[index] size 16 bold
+    input guess placeholder "Your answer"
+    button "Submit" -> submit()
+  } else {
+    text "Finished! Score: " + toText(score) + " out of " + toText(len(questions)) size 20 bold color green
+    button "Play again" -> restart()
+  }
+  text feedback italic
+}
+` },
+
+{ id: 'datatable', name: 'Data table (sort, pages, pick)', src: `page "Desserts"
+
+// A data table: sortable columns (sortOrder), pages of four rows (slice),
+// and a checkbox in the first column to pick rows.
+struct Dessert {
+  name: Text
+  calories: Int
+  fat: Int
+}
+
+state rows: List<Dessert> = [
+  Dessert(name: "Cupcake", calories: 305, fat: 4),
+  Dessert(name: "Donut", calories: 452, fat: 25),
+  Dessert(name: "Eclair", calories: 262, fat: 16),
+  Dessert(name: "Froyo", calories: 159, fat: 6),
+  Dessert(name: "Gingerbread", calories: 356, fat: 16),
+  Dessert(name: "Honeycomb", calories: 408, fat: 3),
+  Dessert(name: "Ice cream", calories: 237, fat: 9),
+  Dessert(name: "Jelly bean", calories: 375, fat: 0),
+  Dessert(name: "KitKat", calories: 518, fat: 26)
+]
+state picked: List<Bool> = [false, false, false, false, false, false, false, false, false]
+state sortBy: Text = "none"
+state ascending: Bool = true
+state pageNo: Int = 0
+
+// the positions of the rows, in the order they should be shown
+fn order(): List<Int> {
+  if sortBy == "none" { return range(len(rows)) }
+  let keys: List<Int> = []
+  for d in rows {
+    if sortBy == "calories" { keys = append(keys, d.calories) } else { keys = append(keys, d.fat) }
+  }
+  if ascending { return sortOrder(keys) }
+  return reverse(sortOrder(keys))
+}
+
+// tapping a column sorts by it; tapping the same column again flips the direction
+fn sortOn(which: Text) {
+  if sortBy == which { ascending = !ascending } else { sortBy = which ascending = true }
+  pageNo = 0
+}
+
+fn arrow(which: Text): Text {
+  if sortBy != which { return "" }
+  if ascending { return " ▲" }
+  return " ▼"
+}
+
+fn lastShown(): Int {
+  let last = pageNo * 4 + 4
+  if last > len(rows) { return len(rows) }
+  return last
+}
+
+fn pageCount(): Int { return (len(rows) + 3) / 4 }
+
+fn pickedCount(): Int {
+  let n = 0
+  for p in picked { if p { n = n + 1 } }
+  return n
+}
+
+view {
+  heading "Desserts"
+  text "Tap Calories or Fat to sort; tap again to flip the direction. Tick rows to pick them." color gray
+  table height 260 padding 9 border #1f3a5f resizable {
+    header "Pick" background #1f3a5f color white, "Dessert" background #1f3a5f color white, button "Calories" + arrow("calories") background #1f3a5f color white radius 0 border #1f3a5f -> sortOn("calories"), button "Fat" + arrow("fat") background #1f3a5f color white radius 0 border #1f3a5f -> sortOn("fat")
+    for i in slice(order(), pageNo * 4, pageNo * 4 + 4) {
+      cells checkbox picked[i] -> picked = setAt(picked, i, !picked[i]), rows[i].name bold when picked[i], toText(rows[i].calories), toText(rows[i].fat)
+    }
+    cells "Picked: " + toText(pickedCount()) span 4 background #dbe7fb color #1f3a5f bold
+  }
+  row {
+    if pageNo > 0 {
+      button "Previous" background #0b57d0 color white radius 20 padding 12 bold -> pageNo = pageNo - 1
+    }
+    text "Page " + toText(pageNo + 1) + " of " + toText(pageCount())
+    if pageNo < pageCount() - 1 {
+      button "Next" background #0b57d0 color white radius 20 padding 12 bold -> pageNo = pageNo + 1
+    }
+    button "Unsort" color #b3261e border #b3261e radius 20 padding 12 -> { sortBy = "none" ascending = true pageNo = 0 }
+  }
+  text "Rows " + toText(pageNo * 4 + 1) + " to " + toText(lastShown()) + " of " + toText(len(rows)) size 11 color gray
+}
+` },
+
+{ id: 'editable', name: 'Editable list (text boxes in a table)', src: `page "Editable list"
+
+// Text boxes can edit one item of a list, or a field of a struct in a list,
+// including inside a table.
+struct Person {
+  name: Text
+  city: Text
+}
+
+state people: List<Person> = [
+  Person(name: "Ada", city: "London"),
+  Person(name: "Grace", city: "New York"),
+  Person(name: "Linus", city: "Helsinki")
+]
+
+view {
+  heading "People"
+  text "Edit any cell. The change is stored in the list." color gray
+  table padding 6 {
+    header "Name", "City"
+    for i in range(len(people)) {
+      cells input people[i].name placeholder "Name", input people[i].city placeholder "City"
+    }
+  }
+  button "Add a person" -> people = append(people, Person(name: "", city: ""))
+  divider
+  for p in people {
+    text p.name + " lives in " + p.city
+  }
+}
+` },
+
+{ id: 'modal', name: 'Dialogs (modal)', src: `page "Dialogs"
+
+// A modal is drawn over the page while its Bool is true. Tap the dim area or press Escape to close it.
+state items: List<Text> = ["Tea", "Cake", "Bread"]
+state askAt: Int = -1          // which item we are asking about; -1 means none
+state about: Bool = false
+
+view {
+  heading "Shopping list"
+  for i in range(len(items)) {
+    row {
+      text items[i]
+      button "Remove" -> askAt = i
+    }
+  }
+  button "About" -> about = true
+
+  // an expression modal says how it closes
+  modal askAt >= 0 width 320 radius 16 -> askAt = -1 {
+    heading "Remove this item?"
+    text items[askAt] bold
+    row {
+      button "Cancel" -> askAt = -1
+      button "Remove" background #b3261e color white -> { items = removeAt(items, askAt) askAt = -1 }
+    }
+  }
+
+  // a modal on a plain Bool state closes by setting it to false
+  modal about padding 24 {
+    heading "About"
+    text "Dialogs sit on top of the page, which is dimmed and cannot be tapped behind them."
+    button "Close" -> about = false
+  }
+}
+` },
+
+{ id: 'layout', name: 'Layout (gap, grid, grow)', src: `page "Layout"
+
+// gap, margin, align, grow, maxwidth and grid
+style card { background #f6f8fa padding 14 radius 10 border #d0d7de }
+
+state cards: Int = 6
+
+view {
+  heading "Layout"
+
+  // align spread pushes the items to opposite ends
+  row align spread padding 12 background #1f3a5f radius 8 {
+    text "Tern Shop" bold color white size 16
+    row gap 18 {
+      text "Home" color white
+      text "Cart" color white
+    }
+  }
+
+  // grow gives each block a share of the row: here 1 part and 3 parts
+  row gap 12 {
+    column grow 1 style card {
+      text "Side" bold
+      text "1 part" color gray
+    }
+    column grow 3 style card {
+      text "Main" bold
+      text "3 parts" color gray
+    }
+  }
+
+  // a grid lays its children out in equal columns
+  row {
+    button "Fewer" -> { if cards > 1 { cards = cards - 1 } }
+    button "More" -> { if cards < 12 { cards = cards + 1 } }
+  }
+  grid 3 gap 10 {
+    for i in range(cards) {
+      column style card gap 2 {
+        text "Card " + toText(i + 1) bold
+        text "in a grid" color gray size 10
+      }
+    }
+  }
+
+  // align center centers the children INSIDE a column. To put the card itself in the middle of
+  // the page, wrap it in another column that has align center. maxwidth keeps the card narrow.
+  column align center {
+    column align center gap 6 maxwidth 360 style card {
+      heading "Centered" size 16
+      text "A narrow card in the middle of the page." color gray
+      button "OK" -> cards = 6
+    }
+  }
+}
+` },
+
+{ id: 'form', name: 'Form (dropdown, radio)', src: `page "Sign up"
+
+// select is a dropdown, radio shows every choice. Both store the choice in a Text state
+// (or a place inside one, like members[i].role).
+struct Member {
+  name: Text
+  role: Text
+}
+
+state name: Text = ""
+state country: Text = ""
+state plan: Text = "Free"
+state agree: Bool = false
+state done: Bool = false
+state countries: List<Text> = ["France", "Japan", "Peru"]
+state roles: List<Text> = ["admin", "editor", "viewer"]
+state members: List<Member> = [
+  Member(name: "Ada", role: "admin"),
+  Member(name: "Linus", role: "")
+]
+
+fn ready(): Bool {
+  return trim(name) != "" && country != "" && agree
+}
+
+view {
+  heading "Sign up"
+  input name placeholder "Your name"
+  select country in countries placeholder "Country"
+  text "Plan" bold
+  radio plan in ["Free", "Pro", "Team"]
+  checkbox agree "I agree to the terms"
+  button "Create account" -> if ready() { done = true }
+  if !ready() {
+    text "Enter a name, pick a country and agree to continue." color gray size 10
+  }
+
+  divider
+  heading "Team" size 16
+  table padding 8 {
+    header "Member", "Role"
+    for i in range(len(members)) {
+      cells members[i].name, select members[i].role in roles placeholder "Pick a role"
+    }
+  }
+
+  modal done {
+    heading "Welcome"
+    text name + " from " + country + ", on the " + plan + " plan."
+    button "Done" -> done = false
+  }
+}
+` },
+
+{ id: 'feedback', name: 'Feedback (textarea, slider, disabled)', src: `page "Feedback"
+
+// textarea is a multi-line text box, slider picks a number in a range,
+// and disabled greys a control out (it can depend on state with when).
+state notes: Text = ""
+state rating: Int = 3
+state agree: Bool = false
+state sent: Bool = false
+
+fn ready(): Bool {
+  return len(trim(notes)) >= 10 && agree
+}
+
+view {
+  heading "Feedback"
+  text "Tell us what you think (at least 10 characters)."
+  textarea notes placeholder "Your feedback" height 110 width 320
+  text toText(len(notes)) + " characters" size 10 color gray
+
+  text "Rating: " + toText(rating) + " / 5" bold
+  slider rating in 1 to 5 width 220
+
+  checkbox agree "You may quote me"
+  button "Send" disabled when !ready() -> sent = true
+  if !ready() {
+    text "Send turns on once the feedback is long enough and you agree." size 10 color gray
+  }
+
+  modal sent {
+    heading "Thank you"
+    text "You rated us " + toText(rating) + " out of 5."
+    button "Close" -> sent = false
+  }
+}
+` },
+
+{ id: 'stopwatch', name: 'Stopwatch (every, saved)', src: `page "Stopwatch"
+
+// every runs an action on a timer while its condition holds (here: while running).
+// A saved state is kept between visits, so the laps are still here when you come back.
+state running: Bool = false
+state tenths: Int = 0
+saved state laps: List<Int> = []
+
+fn show(t: Int): Text {
+  return toText(t / 10) + "." + toText(t % 10) + " s"
+}
+
+view {
+  heading "Stopwatch"
+  text show(tenths) size 36 bold
+  every 100 when running -> tenths = tenths + 1
+
+  row {
+    if running {
+      button "Pause" -> running = false
+    } else {
+      button "Start" -> running = true
+    }
+    button "Lap" -> laps = append(laps, tenths)
+    button "Reset" -> { running = false tenths = 0 }
+  }
+
+  heading "Laps" size 16
+  if len(laps) == 0 {
+    text "No laps yet." color gray
+  }
+  for i in range(len(laps)) {
+    bullet toText(i + 1) + ".  " + show(laps[i])
+  }
+  button "Clear laps" -> laps = []
+}
+` },
+
+{ id: 'structs', name: 'Structs (shopping cart)', src: `page "Cart"
+
+// A struct groups typed fields. Its methods work on self.
+struct Item {
+  name: Text
+  price: Int
+  qty: Int
+
+  fn lineTotal(): Int {
+    return self.price * self.qty
+  }
+
+  // a method that returns nothing may change self
+  fn more() {
+    self.qty = self.qty + 1
+  }
+}
+
+state cart: List<Item> = [
+  Item(name: "Tea", price: 3, qty: 2),
+  Item(name: "Cake", price: 5, qty: 1)
+]
+
+fn total(): Int {
+  let sum = 0
+  for i in cart { sum = sum + i.lineTotal() }
+  return sum
+}
+
+view {
+  heading "Your cart"
+  for i in cart {
+    row {
+      text i.name + " x" + toText(i.qty) bold
+      text "$" + toText(i.lineTotal())
+    }
+  }
+  divider
+  text "Total: $" + toText(total()) size 20 bold
+  button "More tea" -> cart[0].more()
+  button "More cake" -> cart[1].more()
+}
+` },
+
+{ id: 'library', name: 'Library (shop)', libs: { shop: `// shop.ternlib: shared logic, no drawing, no state.
+struct Item {
+  name: Text
+  price: Int
+  qty: Int
+}
+
+fn make(name: Text, price: Int): Item {
+  return Item(name: name, price: price, qty: 1)
+}
+
+fn lineTotal(i: Item): Int {
+  return i.price * i.qty
+}
+
+fn total(items: List<Item>): Int {
+  let sum = 0
+  for i in items { sum = sum + lineTotal(i) }
+  return sum
+}
+
+fn money(n: Int): Text {
+  return "$" + toText(n)
+}
+` }, src: `page "Shop with a library"
+
+// The rules live in shop.ternlib (see the Libraries tab).
+// Everything from the library is written with "shop." in front.
+use "shop.ternlib"
+
+state cart: List<shop.Item> = [shop.make("Tea", 3), shop.make("Cake", 5)]
+
+fn addTea() {
+  cart = append(cart, shop.make("Tea", 3))
+}
+
+view {
+  heading "Your cart"
+  for i in cart {
+    row {
+      text i.name
+      text shop.money(shop.lineTotal(i))
+    }
+  }
+  divider
+  text "Total: " + shop.money(shop.total(cart)) bold size 20
+  button "Add tea" -> addTea()
+}
+` },
+
+{ id: 'foreach', name: 'Foreach loop', src: `page "Foreach loop"
+
+state fruits: List<Text> = ["Apple", "Banana", "Cherry", "Date"]
+state picked: Text = "none"
+
+view {
+  heading "Foreach loop"
+  text "A grid keeps the names and buttons in aligned columns (no table)."
+  grid 2 gap 8 {
+    foreach fruit in fruits {
+      text fruit
+      button "Pick" -> picked = fruit
+    }
+  }
+  divider
+  text "Picked: " + picked bold
+}
+` },
+
+{ id: 'broken', name: 'Broken on purpose', src: `page "Broken on purpose"
+
+state count: Int = 0
+
+view {
+  heading "Type errors are caught before the page runs"
+  text "Count: " + count
+}
+` },
+];
+const api = { EXAMPLES };
+if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.TernExamples = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+(function () {
+'use strict';
+const { EXAMPLES } = TernExamples;
+const $ = id => document.getElementById(id);
+const ta = $('code'), pageEl = $('page'), paper = $('paper'), statusEl = $('status');
+let page = null, curEx = 'styles', lastScreen = null;   // start on the style gallery
+
+// ---------------------------------------------------------------- images: built-in samples + your own
+const svg = body => 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" ${body}</svg>`);
+const SAMPLES = {
+  mountains: svg(`viewBox="0 0 640 360"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ec5fe"/><stop offset="1" stop-color="#fde2c8"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><circle cx="470" cy="110" r="42" fill="#fff3c4"/><polygon points="0,300 130,150 230,260 330,120 470,280 560,190 640,270 640,360 0,360" fill="#5b7a99"/><polygon points="0,330 100,250 200,320 320,230 450,330 560,260 640,320 640,360 0,360" fill="#2f4a66"/>`),
+  sunset: svg(`viewBox="0 0 640 360"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7b4fa0"/><stop offset=".6" stop-color="#ff9a62"/><stop offset="1" stop-color="#ffd27a"/></linearGradient></defs><rect width="640" height="360" fill="url(#s)"/><circle cx="320" cy="215" r="70" fill="#fff1b8"/><rect y="215" width="640" height="145" fill="#2c3e6b"/><g stroke="#ffd27a" stroke-width="4" opacity=".7"><line x1="250" y1="235" x2="390" y2="235"/><line x1="270" y1="255" x2="370" y2="255"/><line x1="290" y1="275" x2="350" y2="275"/></g>`),
+  avatar: svg(`viewBox="0 0 200 200"><rect width="200" height="200" fill="#cfe0ff"/><ellipse cx="100" cy="200" rx="70" ry="58" fill="#0b57d0"/><circle cx="100" cy="82" r="38" fill="#f2c6a0"/><path d="M60 78 C60 38 140 38 140 78 C128 60 76 60 60 78 Z" fill="#3b2a20"/>`),
+  logo: svg(`viewBox="0 0 200 200"><defs><linearGradient id="l" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#0b57d0"/></linearGradient></defs><rect width="200" height="200" rx="44" fill="url(#l)"/><rect x="48" y="52" width="104" height="22" rx="8" fill="#fff"/><rect x="88" y="52" width="24" height="98" rx="8" fill="#fff"/><circle cx="146" cy="136" r="10" fill="#bfdbfe"/>`),
+};
+let mine = {};
+try { mine = JSON.parse(localStorage.getItem('tern.assets') || '{}') || {}; } catch (e) { mine = {}; }
+const assets = Object.assign({}, SAMPLES, mine);
+const assetNames = () => Object.keys(assets);
+let libs = {};
+try { libs = JSON.parse(localStorage.getItem('tern.libs') || '{}') || {}; } catch (e) { libs = {}; }
+const FONT_CSS = {
+  sans: "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", serif: "'Lora',Georgia,'Times New Roman',serif",
+  mono: "'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace", display: "'Playfair Display',Georgia,serif",
+  hand: "'Caveat','Comic Sans MS',cursive", rounded: "'Nunito',system-ui,sans-serif",
+};
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage may be unavailable */ } },
+};
+
+// ---------------------------------------------------------------- tabs
+function go(view) {
+  document.body.dataset.view = view;
+  for (const b of document.querySelectorAll('nav button')) b.setAttribute('aria-selected', String(b.dataset.go === view));
+}
+for (const b of document.querySelectorAll('nav button')) b.addEventListener('click', () => go(b.dataset.go));
+
+// ---------------------------------------------------------------- examples
+const sel = $('ex');
+for (const e of EXAMPLES) { const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; sel.appendChild(o); }
+function loadExample(id, keepView) {
+  const e = EXAMPLES.find(x => x.id === id); if (!e) return false;
+  if (e.libs) { Object.assign(libs, e.libs); saveLibs(); renderLibs(); }
+  curEx = id; sel.value = id; ta.value = e.src; store.set('tern.ex', id); store.set('tern.code', e.src);
+  compile(); if (!keepView) go('page'); return true;
+}
+sel.addEventListener('change', () => loadExample(sel.value));
+$('reset').addEventListener('click', () => loadExample(curEx, true));
+
+// ---------------------------------------------------------------- compile
+function showStatus(err) {
+  statusEl.className = 'status' + (err ? ' bad' : '');
+  statusEl.querySelector('.msg').textContent = err ? `${err.file ? err.file + ' ' : ''}Line ${err.pos[0]}: ${err.msg}` : 'Type-checks. Page is live.';
+}
+function errorCard(err, src) {
+  const rows = src.split('\n'), line = err.pos[0], col = err.pos[1];
+  const card = document.createElement('div'); card.className = 'errcard';
+  const h = document.createElement('h2'); h.textContent = err.phase.replace(/^./, c => c.toUpperCase()) + (err.file ? ' in ' + err.file : '');
+  if (err.file) src = libs[err.file.replace(/\.ternlib$/, '')] || '';
+  const p = document.createElement('div'); p.textContent = err.msg;
+  card.append(h, p);
+  if (line >= 1 && line <= rows.length) {
+    const pre = document.createElement('pre');
+    pre.textContent = `line ${line}\n${rows[line - 1]}\n${' '.repeat(Math.max(col - 1, 0))}^`;
+    card.append(pre);
+  }
+  return card;
+}
+// `every` timers: the engine lists them in page.timers after each render; they run only while the browser tab is visible
+const timerRuns = new Map(), timerLatest = new Map();
+function syncTimers() {
+  const want = new Map((page ? page.timers || [] : []).map(t => [t.key, t]));
+  for (const [k, r] of timerRuns) if (!want.has(k) || want.get(k).ms !== r.ms) { clearInterval(r.id); timerRuns.delete(k); timerLatest.delete(k); }
+  for (const [k, t] of want) {
+    timerLatest.set(k, t);
+    if (!timerRuns.has(k)) timerRuns.set(k, { ms: t.ms, id: setInterval(() => { const cur = timerLatest.get(k); if (cur && !document.hidden) run(() => cur.tick()); }, t.ms) });
+  }
+}
+// `saved state` values are kept in localStorage, per page title, and handed back to the page when it loads
+const savedKey = src => { const m = src.match(/^\s*page\s+"([^"]*)"/m); return 'tern.saved:' + (m ? m[1] : ''); };
+let lastSaved = null, curSavedKey = '';
+function readSaved(key) { try { const j = localStorage.getItem(key); return j ? JSON.parse(j) : undefined; } catch (_) { return undefined; } }
+function persistSaved() {
+  if (!page) return;
+  const j = page.savedJSON();
+  if (j !== null && j !== lastSaved) { try { localStorage.setItem(curSavedKey, j); } catch (_) {} lastSaved = j; }
+  $('clearsaved').hidden = page.savedNames.length === 0;
+  if (page.savedTooBig) showRuntime('This page\'s saved data is over 64 KB, so it is not being kept.');
+}
+$('clearsaved').addEventListener('click', () => { try { localStorage.removeItem(curSavedKey); } catch (_) {} lastSaved = null; compile(); });
+function compile() {
+  const src = ta.value;
+  curSavedKey = savedKey(src);
+  lastSaved = null;
+  store.set('tern.code', src);
+  $('rterr').hidden = true;
+  try {
+    page = Tern.load(src, { assets: assetNames(), libraries: libs, libraryHint: 'add it in the Libraries tab', saved: readSaved(curSavedKey) });
+    showStatus(null);
+    document.title = page.title + ' | Tern Playground';
+    pageEl.replaceChildren(); lastScreen = null; refresh();
+  } catch (e) {
+    if (!(e instanceof Tern.TernError)) throw e;
+    page = null; syncTimers(); showStatus(e); $('clearsaved').hidden = true;
+    $('addr').textContent = 'tern://error'; $('back').disabled = true;
+    pageEl.replaceChildren(errorCard(e, src));
+  }
+}
+statusEl.addEventListener('click', () => {
+  const m = statusEl.querySelector('.msg').textContent.match(/^Line (\d+)/);   // library errors are fixed in the Libraries tab
+  if (m) jumpToLine(parseInt(m[1], 10));
+});
+function jumpToLine(n) {
+  const lines = ta.value.split('\n'); let start = 0;
+  for (let i = 0; i < n - 1; i++) start += lines[i].length + 1;
+  ta.focus(); ta.setSelectionRange(start, start + (lines[n - 1] || '').length);
+}
+
+// ---------------------------------------------------------------- DOM renderer (patches in place so typing keeps focus)
+const mk = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+function css(st, kind) {   // turns a style object from the engine into CSS
+  const s = Object.assign({}, kind === 'heading' ? { size: 22, bold: true } : {}, kind === 'link' ? { underline: true } : {}, st);
+  const out = [];
+  if (s.size) out.push(`font-size:${(s.size * 4 / 3).toFixed(1)}px;line-height:1.3`);
+  if ('bold' in s) out.push(`font-weight:${s.bold ? 700 : 400}`);
+  if ('italic' in s) out.push(`font-style:${s.italic ? 'italic' : 'normal'}`);
+  if ('underline' in s || 'strike' in s) out.push(`text-decoration:${[s.underline && 'underline', s.strike && 'line-through'].filter(Boolean).join(' ') || 'none'}`);
+  if (s.color) out.push(`color:${s.color}`);
+  if (s.background) out.push(`background:${s.background}`);
+  if (s.font) out.push(`font-family:${FONT_CSS[s.font]}`);
+  if (s.radius !== undefined) out.push(`border-radius:${s.radius}px`);
+  if (s.border) out.push(`border:1px solid ${s.border}`);
+  if (s.width) out.push(`width:${s.width}px;max-width:100%`);
+  if (s.height) out.push(`height:${s.height}px` + (s.width ? ';object-fit:cover' : ''));
+  if (kind === 'image') { if (s.align) out.push(`align-self:${{ left: 'flex-start', center: 'center', right: 'flex-end', spread: 'flex-start' }[s.align]}`); }
+  else if (kind === 'row') { if (s.align) out.push(`justify-content:${{ left: 'flex-start', center: 'center', right: 'flex-end', spread: 'space-between' }[s.align]}`); }
+  else if (kind === 'column') { if (s.align) out.push(`align-items:${{ left: 'flex-start', center: 'center', right: 'flex-end', spread: 'flex-start' }[s.align]}`); }
+  else if (s.align) out.push(`text-align:${s.align === 'spread' ? 'left' : s.align}`);
+  if (s.gap !== undefined) out.push(`gap:${s.gap}px`);
+  if (s.margin !== undefined) out.push(`margin:${s.margin}px`);
+  if (s.grow) out.push(`--grow:${s.grow} 1 0px;min-width:0`);   // a share of the row's free width (see .row > *)
+  if (s.maxwidth) out.push(`max-width:${s.maxwidth}px`);
+  if (s.minwidth) out.push(`min-width:${s.minwidth}px`);
+  if (s.padding !== undefined) out.push(`padding:${s.padding}px`);
+  else if (s.background && (kind === 'text' || kind === 'heading' || kind === 'bullet')) out.push('padding:4px 10px');
+  return out.join(';');
+}
+let radioId = 0;
+function build(n) {
+  let e;
+  switch (n.t) {
+    case 'heading': case 'text': e = mk('div', 't ' + n.t); break;
+    case 'bullet': e = mk('div', 't bullet'); e.appendChild(mk('span')); break;
+    case 'para': e = mk('div', 'para'); break;
+    case 'button': e = mk('button', 'tbtn'); e.type = 'button';
+      e.addEventListener('click', () => run(() => e._n.click())); break;
+    case 'textarea': e = mk('textarea', 'tta'); e.autocomplete = 'off'; e.spellcheck = false;
+      e.addEventListener('input', () => run(() => e._n.set(e.value))); break;
+    case 'slider': e = mk('input', 'tslider'); e.type = 'range';
+      e.addEventListener('input', () => run(() => e._n.set(Number(e.value)))); break;
+    case 'select': e = mk('select', 'tsel');
+      e.addEventListener('change', () => run(() => e._n.set(e.value))); break;
+    case 'radio': e = mk('div', 'tradio'); e.setAttribute('role', 'radiogroup'); e._g = 'r' + (++radioId); break;
+    case 'checkbox': e = mk('label', 'tcheck');
+      { const i = mk('input'); i.type = 'checkbox'; e.append(i, mk('span'));
+        i.addEventListener('change', () => run(() => e._n.click())); } break;
+    case 'input': e = mk('input', 'tin'); e.type = 'text'; e.autocomplete = 'off';
+      e.addEventListener('input', () => { run(() => e._n.set(e.value)); }); break;
+    case 'link': e = mk('a', 'tlink'); e.href = '#';
+      e.addEventListener('click', ev => {
+        if (e._n.click) { ev.preventDefault(); run(() => e._n.click()); return; }
+        const tg = e._n.target;
+        if (/^https?:\/\//.test(tg)) { e.href = tg; e.target = '_blank'; e.rel = 'noopener'; return; }
+        ev.preventDefault();
+        const id = tg.replace(/\.tern$/, '');
+        if (!loadExample(id, true)) showRuntime(`No page called "${tg}" in the playground. Links to http(s) addresses open normally.`);
+      }); break;
+    case 'row': case 'column': e = mk('div', n.t === 'row' ? 'row' : 'col'); break;
+    case 'grid': e = mk('div', 'grid'); break;
+    case 'table': e = mk('div', 'tscroll'); break;
+    case 'divider': e = mk('hr', 'divider'); break;
+    case 'image': e = mk('img', 'timg'); e.addEventListener('error', () => e.classList.add('broken')); break;
+    default: e = mk('div');
+  }
+  e._t = n.t;
+  return e;
+}
+function update(e, n) {
+  e._n = n;
+  switch (n.t) {
+    case 'heading': case 'text': e.textContent = n.text; e.style.cssText = css(n.style, n.t); break;
+    case 'bullet': e.firstChild.textContent = n.text; e.style.cssText = css(n.style, 'bullet'); break;
+    case 'para':
+      e.replaceChildren(...n.spans.map(sp => { const s = mk('span', 'sp'); s.textContent = sp.text; s.style.cssText = css(sp.style, 'span'); return s; }));
+      e.style.cssText = css(n.style.align ? { align: n.style.align } : {}, 'para'); break;
+    case 'button': e.textContent = n.label; e.style.cssText = css(n.style, 'button'); e.disabled = !!(n.style && n.style.disabled); break;
+    case 'input': case 'textarea':
+      e.placeholder = n.placeholder; e.dataset.name = n.name || '';
+      if (e !== document.activeElement && e.value !== n.value) e.value = n.value;
+      e.disabled = !!(n.style && n.style.disabled); e.style.cssText = css(n.style || {}, n.t); break;
+    case 'slider':
+      e.min = n.lo; e.max = n.hi; e.value = n.value; e.disabled = !!(n.style && n.style.disabled);
+      e.style.cssText = css(n.style || {}, 'slider') + (n.style && n.style.color ? ';accent-color:' + n.style.color : ''); break;
+    case 'link': e.textContent = n.text; e.style.cssText = css(n.style, 'link'); break;
+    case 'select': {
+      const key = n.options.join('\u0001') + '|' + n.placeholder;
+      if (e._key !== key) {
+        e._key = key;
+        const ph = mk('option'); ph.value = ''; ph.textContent = n.placeholder; ph.disabled = true; ph.hidden = true;
+        e.replaceChildren(ph, ...n.options.map(o => { const op = mk('option'); op.value = o; op.textContent = o; return op; }));
+      }
+      e.value = n.options.includes(n.value) ? n.value : '';
+      e.disabled = !!(n.style && n.style.disabled); e.style.cssText = css(n.style || {}, 'select'); break;
+    }
+    case 'radio': {
+      const key = n.options.join('\u0001');
+      if (e._key !== key) {
+        e._key = key;
+        e.replaceChildren(...n.options.map(o => {
+          const l = mk('label', 'tcheck'), i = mk('input'); i.type = 'radio'; i.name = e._g; i.value = o;
+          i.addEventListener('change', () => run(() => e._n.set(o)));
+          const sp = mk('span'); sp.textContent = o; l.append(i, sp); return l;
+        }));
+      }
+      [...e.children].forEach(l => { l.firstChild.checked = l.firstChild.value === n.value; l.firstChild.disabled = !!(n.style && n.style.disabled); });
+      e.style.cssText = css(n.style || {}, 'cell'); break;
+    }
+    case 'checkbox': e.firstChild.disabled = !!(n.style && n.style.disabled); e.firstChild.checked = n.checked; e.lastChild.textContent = n.label; e.style.cssText = css(n.style, 'cell'); break;
+    case 'image': {
+      const src = assets[n.src] || (/^(https?:|data:)/.test(n.src) ? n.src : '');
+      if (e._src !== src) { e._src = src; e.classList.remove('broken'); if (src) e.src = src; else { e.removeAttribute('src'); e.classList.add('broken'); } }
+      e.alt = n.alt || (src ? '' : `image not found: ${n.src}`);
+      e.style.cssText = css(n.style, 'image'); break;
+    }
+    case 'row': case 'column': e.style.cssText = css(n.style, n.t); e.classList.toggle('aligned', !!n.style.align); patch(e, n.children); break;
+    case 'grid': e.style.cssText = css(n.style, 'grid') + `;grid-template-columns:repeat(${n.cols},minmax(0,1fr))`; patch(e, n.children); break;
+    case 'table': {
+      const st = n.style || {}, t = mk('table', 'tt');
+      t.style.cssText = css({ size: st.size, color: st.color, font: st.font, background: st.background }, 'table');
+      const line = st.border || '#d0d7de', pad = st.padding !== undefined ? st.padding + 'px' : '';
+      const fill = (tr, row, tag, ri) => {
+        row.cells.forEach((c, ci) => {
+          const cell = mk(tag);
+          cell.style.cssText = 'border-color:' + line + (pad ? ';padding:' + pad : '');
+          if (c.span > 1) cell.colSpan = c.span;
+          if (c.kind !== 'text' && c.style && c.style.background) cell.style.background = c.style.background;   // a button's colour fills its cell
+          if (c.kind === 'text') { cell.textContent = c.text; cell.style.cssText += ';' + css(c.style, 'cell'); }
+          else if (c.kind === 'select') {
+            const el = build({ t: 'select' }); update(el, { t: 'select', value: c.text, options: c.options, placeholder: c.placeholder, set: c.set });
+            el.dataset.cell = ri + ':' + ci; cell.appendChild(el);
+          }
+          else if (c.kind === 'input') {
+            const el = build({ t: 'input' }); update(el, { t: 'input', name: '', value: c.text, placeholder: c.placeholder, set: c.set });
+            el.dataset.cell = ri + ':' + ci; cell.appendChild(el);
+          } else {
+            const el = build({ t: c.kind }); update(el, c.kind === 'button'
+              ? { t: 'button', label: c.text, click: c.click, style: c.style }
+              : c.kind === 'checkbox'
+              ? { t: 'checkbox', label: c.text, checked: c.checked, click: c.click, style: c.style }
+              : { t: 'link', text: c.text, target: c.target, click: c.click, style: c.style });
+            cell.appendChild(el);
+          }
+          tr.appendChild(cell);
+        });
+      };
+      const widths = e._widths && n.resizable ? e._widths : null;
+      if (n.resizable && n.hrow) {   // a drag handle on the right edge of each header cell
+        let col = 0;
+        n.hrow.cells.forEach(c => { c._col = col + c.span - 1; col += c.span; });
+      }
+      if (n.hrow) { const tr = mk('tr'); fill(tr, n.hrow, 'th', 'h');
+        if (n.resizable) [...tr.children].forEach((th, i) => {
+          const g = mk('span', 'colgrip'); g.setAttribute('aria-hidden', 'true');
+          const col = n.hrow.cells[i]._col;
+          g.addEventListener('pointerdown', ev => {
+            ev.preventDefault(); g.setPointerCapture(ev.pointerId);
+            const ths = [...tr.children]; let c0 = 0;
+            if (!e._widths) {   // first drag: fix every column at its current width, then change only this one
+              e._widths = []; n.hrow.cells.forEach((c, k) => { for (let j = 0; j < c.span; j++) e._widths.push(ths[k].offsetWidth / c.span); });
+            }
+            const start = ev.clientX, w0 = e._widths[col];
+            const move = m => { e._widths[col] = Math.max(48, w0 + m.clientX - start); applyWidths(e); };
+            const up = () => { g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); g.removeEventListener('pointercancel', up); };
+            g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
+            applyWidths(e);
+          });
+          th.appendChild(g);
+        }); const th = mk('thead'); th.appendChild(tr); t.appendChild(th); }
+      const body = mk('tbody');
+      n.body.forEach((r, ri) => { const tr = mk('tr'); fill(tr, r, 'td', ri); body.appendChild(tr); });
+      // the table is rebuilt on every change, so keep the cursor in the text box being typed in
+      const act = document.activeElement, was = act && act.dataset && act.dataset.cell && e.contains(act) ? { k: act.dataset.cell, a: act.selectionStart, b: act.selectionEnd } : null;
+      t.appendChild(body); e.replaceChildren(t); if (widths) applyWidths(e);
+      if (was) { const el = t.querySelector('[data-cell="' + was.k + '"]'); if (el) { el.focus(); try { el.setSelectionRange(was.a, was.b); } catch (_) {} } }
+      e.style.cssText = css({ margin: st.margin, grow: st.grow, maxwidth: st.maxwidth, minwidth: st.minwidth }, 'cell') + (st.height ? ';max-height:' + st.height + 'px' : ''); break;
+    }
+  }
+}
+// fixed column widths chosen by dragging (a resizable table): a <colgroup> and table-layout: fixed
+function applyWidths(e) {
+  const t = e.firstChild; if (!t || !e._widths) return;
+  let cg = t.querySelector('colgroup');
+  if (!cg) { cg = mk('colgroup'); t.insertBefore(cg, t.firstChild); }
+  while (cg.children.length < e._widths.length) cg.appendChild(mk('col'));
+  e._widths.forEach((w, i) => { cg.children[i].style.width = w + 'px'; });
+  t.style.tableLayout = 'fixed'; t.style.width = e._widths.reduce((a, b) => a + b, 0) + 'px';
+}
+function patch(parent, nodes) {
+  nodes.forEach((n, i) => {
+    const old = parent.children[i];
+    if (old && old._t === n.t) update(old, n);
+    else { const e = build(n); update(e, n); old ? parent.replaceChild(e, old) : parent.appendChild(e); }
+  });
+  while (parent.children.length > nodes.length) parent.lastChild.remove();
+}
+function updateChrome() {
+  const slug = (page.title || 'page').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  $('addr').textContent = 'tern://' + slug + (page.screens.length > 1 ? '/' + page.screen : '');
+  $('back').disabled = page.history.length === 0;
+}
+function refresh() {
+  if (!page) return;
+  try { const nodes = page.render(); patch(pageEl, nodes.filter(n => n.t !== 'modal')); showModal(nodes.filter(n => n.t === 'modal').pop()); } catch (e) { if (e instanceof Tern.TernError) showRuntime(e.toString()); else throw e; }
+  if (page.screen !== lastScreen) { if (lastScreen !== null) paper.scrollTop = 0; lastScreen = page.screen; }
+  updateChrome(); persistSaved(); syncTimers();
+}
+// A modal is drawn over the page pane. The page behind it is made inert; Escape or a tap on the dim area closes it.
+const mlayer = $('mlayer'), mdlg = $('mdlg'); let mNode = null, mFrom = null;
+function showModal(n) {
+  mNode = n || null;
+  if (!n) {
+    if (!mlayer.hidden) { mlayer.hidden = true; paper.inert = false; mdlg.replaceChildren(); if (mFrom && mFrom.isConnected) mFrom.focus(); mFrom = null; }
+    return;
+  }
+  const opening = mlayer.hidden;
+  if (opening) { mFrom = document.activeElement; mlayer.hidden = false; paper.inert = true; }
+  mlayer.style.top = paper.offsetTop + 'px';
+  mdlg.style.cssText = css(n.style, 'modal');
+  patch(mdlg, n.children);
+  if (opening) (mdlg.querySelector('input, button, a[href]') || mdlg).focus();
+}
+mlayer.addEventListener('pointerdown', ev => { if (ev.target === mlayer && mNode) run(() => mNode.close()); });
+document.addEventListener('keydown', ev => {
+  if (!mNode) return;
+  if (ev.key === 'Escape') { ev.preventDefault(); run(() => mNode.close()); }
+  else if (ev.key === 'Tab') {   // keep Tab inside the dialog
+    const f = [...mdlg.querySelectorAll('input, button, a[href]')]; if (!f.length) { ev.preventDefault(); return; }
+    const first = f[0], last = f[f.length - 1];
+    if (ev.shiftKey && (document.activeElement === first || document.activeElement === mdlg)) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+  }
+});
+$('back').addEventListener('click', () => run(() => page.back()));
+function showRuntime(msg) { const r = $('rterr'); r.textContent = msg; r.hidden = false; }
+function run(fn) {
+  $('rterr').hidden = true;
+  try { fn(); } catch (e) { if (e instanceof Tern.TernError) showRuntime(e.toString()); else throw e; }
+  refresh();
+}
+
+// ---------------------------------------------------------------- phone-friendly typing aids
+function insert(text) {
+  ta.focus();
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  ta.setRangeText(text, s, e, 'end');
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+const chips = $('chips');
+for (const c of ['{', '}', '"', '->', '(', ')', '[', ']', ':', '=', ',', '#', '//', '  ']) {
+  const b = mk('button'); b.type = 'button'; b.textContent = c.trim() === '' ? 'tab' : c;
+  b.setAttribute('aria-label', 'Insert ' + (c.trim() === '' ? 'two spaces' : c));
+  b.addEventListener('pointerdown', ev => ev.preventDefault());
+  b.addEventListener('click', () => insert(c));
+  chips.appendChild(b);
+}
+const SNIPPETS = [
+  ['Image', 'image "mountains" width 240 alt "A picture"'],
+  ['Styled button', 'button "Go" style cta -> goto home'],
+  ['Another page', 'view about {\n  heading "About"\n  button "Back" -> back\n}', true],
+  ['Go to a page', 'button "About" -> goto about'],
+  ['Decimal state', 'state price: Float = 2.5', true],
+  ['Struct', 'struct Item {\n  name: Text\n  price: Int\n}\n', true],
+  ['Change a field', 'item.price = item.price + 1'],
+  ['Struct method', 'fn show(): Text {\n  return self.name\n}'],
+  ['Font text', 'text "Fancy" font display size 24'],
+  ['Heading', 'heading "Title"'],
+  ['Text', 'text "Some text"'],
+  ['Styled text', 'text "Important" bold color red size 18'],
+  ['Mixed paragraph', 'para {\n  span "Plain, "\n  span "bold" bold\n  span " and "\n  span "italic" italic\n}'],
+  ['Bullet', 'bullet "An item"'],
+  ['Button', 'button "Click" -> count = count + 1'],
+  ['Text box', 'input name placeholder "Type here"'],
+  ['Checkbox', 'checkbox agree "I agree"'],
+  ['Multi-line text', 'textarea notes placeholder "Notes" height 120'],
+  ['Slider', 'slider volume in 0 to 100'],
+  ['Dropdown', 'select choice in ["One", "Two", "Three"] placeholder "Pick one"'],
+  ['Radio buttons', 'radio choice in ["One", "Two", "Three"]'],
+  ['Modal', 'modal showDialog {\n  heading "Are you sure?"\n  button "OK" -> showDialog = false\n}'],
+  ['Table', 'table {\n  header "Name", "Qty"\n  cells "Tea", "2"\n  cells "Cake", "1"\n}'],
+  ['Row', 'row {\n  text "left"\n  text "right"\n}'],
+  ['Grid', 'grid 3 gap 10 {\n  text "one"\n  text "two"\n  text "three"\n}'],
+  ['Style', 'style note { italic color gray size 11 }', true],
+  ['State', 'state count: Int = 0', true],
+  ['Function', 'fn double(n: Int): Int {\n  return n * 2\n}', true],
+];
+const ins = mk('select'); ins.setAttribute('aria-label', 'Insert a block');
+ins.appendChild(Object.assign(mk('option'), { textContent: 'Insert...', value: '' }));
+SNIPPETS.forEach((s, i) => ins.appendChild(Object.assign(mk('option'), { textContent: s[0], value: String(i) })));
+function depthAt(pos) {
+  const pre = ta.value.slice(0, pos).replace(/"(?:[^"\\\n]|\\.)*"/g, '""').replace(/\/\/[^\n]*/g, '');
+  return (pre.match(/\{/g) || []).length - (pre.match(/\}/g) || []).length;
+}
+function insertBlock(snip, top) {
+  const here = ta.selectionStart, depth = depthAt(here);
+  if (!top && depth <= 0) {            // a page element outside any view: put it inside the last view
+    const idx = ta.value.lastIndexOf('}');
+    if (idx >= 0) {
+      const at = ta.value.lastIndexOf('\n', idx) + 1;
+      ta.setSelectionRange(at, at);
+      insert('  ' + snip.split('\n').join('\n  ') + '\n');
+      return;
+    }
+  }
+  if (top && depth > 0) {              // top-level things can go anywhere at the top; use the end of the file
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    insert((ta.value.endsWith('\n') ? '\n' : '\n\n') + snip + '\n');
+    return;
+  }
+  const s = ta.selectionStart, before = ta.value.slice(0, s);
+  const lineStart = before.lastIndexOf('\n') + 1, lead = (before.slice(lineStart).match(/^\s*/) || [''])[0];
+  const atBlank = before.slice(lineStart).trim() === '';
+  insert((atBlank ? '' : '\n' + lead) + snip.split('\n').map((l, i) => (i && lead ? lead + l : l)).join('\n') + '\n' + lead);
+}
+ins.addEventListener('change', () => {
+  if (ins.value === '') return;
+  const [, snip, top] = SNIPPETS[+ins.value]; ins.value = '';
+  insertBlock(snip, !!top);
+});
+chips.prepend(ins);
+const copyBtn = mk('button'); copyBtn.type = 'button'; copyBtn.textContent = 'Copy'; copyBtn.style.fontFamily = 'var(--sans)';
+copyBtn.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(ta.value); copyBtn.textContent = 'Copied'; }
+  catch (e) { ta.focus(); ta.select(); copyBtn.textContent = 'Selected'; }
+  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1400);
+});
+chips.appendChild(copyBtn);
+
+// auto-indent on Enter (beforeinput covers mobile keyboards), Tab on desktop
+ta.addEventListener('beforeinput', ev => {
+  if (ev.inputType !== 'insertLineBreak' && !(ev.inputType === 'insertText' && ev.data === '\n')) return;
+  ev.preventDefault();
+  const s = ta.selectionStart, before = ta.value.slice(0, s);
+  const line = before.slice(before.lastIndexOf('\n') + 1);
+  const lead = line.match(/^\s*/)[0] + (/\{\s*$/.test(line) ? '  ' : '');
+  insert('\n' + lead);
+});
+ta.addEventListener('keydown', ev => { if (ev.key === 'Tab' && !ev.shiftKey) { ev.preventDefault(); insert('  '); } });
+let timer = 0;
+ta.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(compile, 120); });
+
+// ---------------------------------------------------------------- images tab
+function saveMine() { try { localStorage.setItem('tern.assets', JSON.stringify(mine)); return true; } catch (e) { return false; } }
+function renderAssets() {
+  const list = $('imglist'); list.replaceChildren();
+  for (const name of assetNames()) {
+    const row = mk('div', 'asset');
+    const im = mk('img'); im.src = assets[name]; im.alt = '';
+    const box = mk('div'); const nm = mk('div', 'nm'); nm.textContent = name;
+    const acts = mk('div', 'acts');
+    const use = mk('button'); use.type = 'button'; use.textContent = 'Use in page';
+    use.addEventListener('click', () => { go('code'); ta.focus(); insertBlock(`image "${name}" width 240 alt ""`); });
+    acts.appendChild(use);
+    if (name in mine) {
+      const rm = mk('button'); rm.type = 'button'; rm.textContent = 'Remove';
+      rm.addEventListener('click', () => { delete mine[name]; delete assets[name]; saveMine(); renderAssets(); compile(); });
+      acts.appendChild(rm);
+    }
+    box.append(nm, acts); row.append(im, box); list.appendChild(row);
+  }
+  $('imgnote').textContent = 'Photos you add are shrunk to fit and kept on this device only. Web addresses (https://...) work only where the host allows them.';
+}
+function cleanName(file) {
+  let n = file.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'photo';
+  let k = n, i = 2; while (k in assets) k = n + '-' + i++;
+  return k;
+}
+$('addimg').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', async () => {
+  const f = $('file').files[0]; $('file').value = '';
+  if (!f) return;
+  try {
+    const bmp = await createImageBitmap(f);
+    const k = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+    const name = cleanName(f), uri = c.toDataURL('image/jpeg', 0.82);
+    mine[name] = uri; assets[name] = uri;
+    if (!saveMine()) $('imgnote').textContent = 'Added for this visit, but this browser would not keep it.';
+    renderAssets(); compile();
+  } catch (e) { $('imgnote').textContent = 'Could not read that file as an image.'; }
+});
+renderAssets();
+
+// ---------------------------------------------------------------- libraries tab
+function saveLibs() { try { localStorage.setItem('tern.libs', JSON.stringify(libs)); return true; } catch (e) { return false; } }
+function renderLibs() {
+  const list = $('liblist'); list.replaceChildren();
+  const names = Object.keys(libs);
+  $('libnote').textContent = names.length ? 'Libraries are kept on this device only. A library holds struct and fn, and cannot use state, views or other libraries.' : 'No libraries yet. Add one above, or pick the "Library (shop)" example.';
+  for (const name of names) {
+    const box = mk('div', 'lib');
+    const nm = mk('div', 'nm'); nm.textContent = name + '.ternlib';
+    const area = mk('textarea'); area.value = libs[name]; area.spellcheck = false; area.setAttribute('aria-label', name + '.ternlib source');
+    area.addEventListener('input', () => { libs[name] = area.value; saveLibs(); compile(); });
+    const acts = mk('div', 'acts');
+    const use = mk('button'); use.type = 'button'; use.textContent = 'Use in page';
+    use.addEventListener('click', () => { go('code'); ta.focus(); insertBlock(`use "${name}.ternlib"`, true); });
+    const rm = mk('button'); rm.type = 'button'; rm.textContent = 'Remove';
+    rm.addEventListener('click', () => { delete libs[name]; saveLibs(); renderLibs(); compile(); });
+    acts.append(use, rm); box.append(nm, area, acts); list.appendChild(box);
+  }
+}
+$('addlib').addEventListener('click', () => {
+  const n = $('newlibname').value.trim().replace(/\.ternlib$/, '');
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) { $('libnote').textContent = 'A library name uses letters, digits and _ only, like shop.'; return; }
+  if (n in libs) { $('libnote').textContent = n + ' already exists.'; return; }
+  libs[n] = 'fn double(n: Int): Int {\n  return n * 2\n}\n'; $('newlibname').value = '';
+  saveLibs(); renderLibs(); compile();
+});
+renderLibs();
+
+// ---------------------------------------------------------------- help
+$('help').innerHTML = `
+<h2>How a page is built</h2>
+<p>A page has <code>state</code> (what it remembers), <code>fn</code> (what it can do) and one <code>view</code> (what it shows). Tern checks types before anything runs.</p>
+<h2>Text style</h2>
+<p>Put these after the text, in any order:</p>
+<table>
+<tr><td><code>size 20</code></td><td>Size in points. Normal text is 12.</td></tr>
+<tr><td><code>bold</code> <code>italic</code> <code>underline</code> <code>strike</code></td><td>Switch on. Add <code>when cond</code> to make it conditional.</td></tr>
+<tr><td><code>color red</code></td><td>Text colour.</td></tr>
+<tr><td><code>background #fdecea</code></td><td>Highlight colour.</td></tr>
+<tr><td><code>align center</code></td><td><code>left</code>, <code>center</code> or <code>right</code>.</td></tr>
+</table>
+<pre>text "Sale!" size 24 bold color red
+text "Done" strike when finished</pre>
+<h2>Colours</h2>
+<p>By name, by hex like <code>#0b57d0</code> (or <code>#fff</code>), or with <code>rgb(r, g, b)</code> using 0 to 255.</p>
+<div id="swatches"></div>
+<h2>Named styles</h2>
+<p>Write a style once at the top, then reuse it. Later styles and direct settings win.</p>
+<pre>style warning { bold color red background #fdecea }
+
+text "Careful" style warning
+text "Careful, bigger" style warning size 20</pre>
+<h2>Mixed text in one sentence</h2>
+<pre>para {
+  span "Plain, "
+  span "bold" bold
+  span " and "
+  span "red" color red
+}</pre>
+<h2>Tables and lists</h2>
+<pre>table {
+  header "Item", "Price"
+  cells "Tea", "$3"
+  for i in range(len(names)) {
+    cells names[i], toText(prices[i])
+  }
+}
+bullet "A list item"</pre>
+<p>Every row needs the same number of cells. Cells are Text, so use <code>toText()</code> for numbers.</p>
+<p>A wide table scrolls sideways. For a long one, add <code>height</code> (points): <code>table height 240 { ... }</code>. The table then scrolls up and down in its own box and the header row stays in view.</p>
+<p>A cell can be a button or a link, and can span columns. Style words after a cell apply to that cell. The table itself takes <code>padding size color background border font</code>.</p>
+<pre>table height 200 padding 8 {
+  header "Pick", button "Sort by price" -> sorted = true, "Name"
+  cells button "[ ]" -> toggle(0), "$3" bold, "Tea"
+  cells "Total" span 2 background #eef, "$3"
+}</pre>
+<h2>Layout</h2>
+<pre>row {                      // side by side
+  button "A" -> n = 1
+  button "B" -> n = 2
+}
+column style card { ... }  // stacked, with a background
+row background gray padding 8 { ... }</pre>
+<h2>Spacing, alignment and grids</h2>
+<table>
+<tr><td><code>gap 16</code></td><td>Space between the items of a row, column or grid (default 8).</td></tr>
+<tr><td><code>margin 12</code></td><td>Space around any block.</td></tr>
+<tr><td><code>align spread</code></td><td>On a row: <code>left</code>, <code>center</code>, <code>right</code> or <code>spread</code> (items pushed to opposite ends). On a column it places each item inside it left, centre or right. To centre a narrow card on the page, wrap it in an outer <code>column align center</code>.</td></tr>
+<tr><td><code>grow 2</code></td><td>In a row, take 2 shares of the width that is left over.</td></tr>
+<tr><td><code>maxwidth 400</code> <code>minwidth 120</code></td><td>Limit how wide a block gets.</td></tr>
+<tr><td><code>grid 3 { ... }</code></td><td>Lay children out in 3 equal columns, wrapping to new lines.</td></tr>
+</table>
+<pre>row align spread { text "Shop"  text "Cart" }
+row gap 12 {
+  column grow 1 { text "Side" }
+  column grow 3 { text "Main" }
+}
+grid 3 gap 10 {
+  for i in range(6) { text "Card " + toText(i) }
+}</pre>
+<h2>Pages and buttons that move</h2>
+<p>Name each <code>view</code> to make several pages. The first is the start. Buttons and links can run <code>goto</code> and <code>back</code>.</p>
+<pre>view home {
+  button "Menu" -> goto menu
+}
+view menu {
+  text "Today: soup"
+  button "Back" -> back
+  link "Home" -> goto home
+}</pre>
+<p>Use <code>link "Site" to "https://..."</code> for outside web pages. Pages share the same state.</p>
+<h2>Images</h2>
+<p>Add photos in the Images tab (or use the samples), then: </p>
+<pre>image "mountains" width 280 radius 12 alt "Peaks"
+image "avatar" width 64 height 64 radius 999</pre>
+<p>Settings: <code>width height radius border align alt</code>. Tern checks that the image exists.</p>
+<h2>Fonts</h2>
+<p><code>text "Hi" font serif</code>. Choices: <code>sans serif mono display hand rounded</code>. <code>Font</code> is a type, so a state can hold one.</p>
+<h2>Styling buttons and boxes</h2>
+<pre>style cta { background blue color white bold radius 10 padding 12 }
+button "Buy" style cta width 220 -> goto cart
+row border gray radius 8 padding 10 { ... }</pre>
+<p>Buttons take <code>size bold italic color background font padding radius border width</code>. Rows and columns take <code>background padding radius border width</code>.</p>
+<h2>Text boxes on list items</h2>
+<p><code>input</code> can edit one item of a list, or a Text field inside a struct, and can be a table cell.</p>
+<pre>input names[i] placeholder "Name"
+input people[i].name
+table { for i in range(len(names)) { cells input names[i], toText(i) } }</pre>
+<p>The place has to start at a state, not a loop variable (a loop variable is only a copy of the item).</p>
+<h2>Modal dialog</h2>
+<p>A <code>modal</code> is drawn over the page, with the page dimmed and unclickable behind it. It shows while its <code>Bool</code> is true. Tapping the dim area or pressing Escape closes it: that sets a named state to false, or runs the action you give.</p>
+<pre>state confirm: Bool = false
+
+button "Delete" -> confirm = true
+modal confirm width 300 {
+  heading "Delete it?"
+  row {
+    button "Cancel" -> confirm = false
+    button "Delete" -> { items = removeAt(items, 0) confirm = false }
+  }
+}
+
+modal step > 0 -> step = 0 { ... }   // any condition, with its own close action</pre>
+<p>A modal goes directly in the view, not inside a row or column. It takes <code>width background padding radius border</code>. If two are open, the last one is shown.</p>
+<h2>Resizable columns</h2>
+<p>Add <code>resizable</code> after <code>table</code> and the reader can drag the right edge of a header cell to widen or narrow that column. The widths last until the page is reloaded.</p>
+<pre>table resizable height 240 { ... }</pre>
+<h2>Timers</h2>
+<p><code>every</code> runs an action again and again while it is on the page. The time is in milliseconds, and <code>when</code> turns it on and off.</p>
+<pre>state running: Bool = false
+state seconds: Int = 0
+
+button "Start" -> running = !running
+every 1000 when running -> seconds = seconds + 1</pre>
+<p>A timer never ticks faster than every 100 ms, a page can have at most 4 at once, it pauses while the browser tab is hidden, and it stops when you go to another <code>view</code>. If its action fails 3 times in a row, it stops.</p>
+<h2>Saved state</h2>
+<p>Put <code>saved</code> in front of a <code>state</code> and its value is kept between visits. Other states start fresh each time.</p>
+<pre>saved state name: Text = ""
+saved state todos: List&lt;Text&gt; = []
+state searching: Bool = false    // not kept</pre>
+<p>Any type works, including lists and structs. A kept value that no longer fits the state's type is ignored. Each page keeps up to 64 KB, on this device only, and only the page itself can read it. The <b>Clear saved</b> button in the page bar forgets it.</p>
+<h2>Multi-line text, slider and disabled</h2>
+<pre>state notes: Text = ""
+state volume: Int = 30
+state agreed: Bool = false
+
+textarea notes placeholder "Notes" height 120 width 300
+slider volume in 0 to 100 width 200
+text "Volume: " + toText(volume)
+
+button "Send" disabled when !agreed -> sent = true</pre>
+<p><code>textarea</code> is a multi-line text box on a <code>Text</code> state (or a place inside one); <code>height</code> sets how tall it is. <code>slider</code> edits an <code>Int</code> between two numbers; if the state is outside the range the slider shows the nearest end, and a range that ends before it starts is a runtime error. Add <code>disabled</code> (with <code>when</code> if you like) to a button, text box, textarea, slider, dropdown, radio or checkbox: it is greyed out and does nothing when used.</p>
+<h2>Dropdown and radio buttons</h2>
+<p><code>select</code> shows a dropdown and <code>radio</code> shows all the choices at once. Both pick from a list of <code>Text</code> options and store the choice in a <code>Text</code> state, or in a place inside one, like <code>input</code>.</p>
+<pre>state plan: Text = "Free"
+state country: Text = ""
+
+radio plan in ["Free", "Pro", "Team"]
+select country in ["France", "Japan", "Peru"] placeholder "Pick one"
+
+select people[i].role in roles          // inside a list
+table { for i in range(len(people)) { cells select people[i].role in roles, people[i].name } }</pre>
+<p>If the stored text is not one of the options, nothing is selected. A <code>select</code> takes <code>size color font width</code> and the spacing words; a <code>radio</code> takes <code>size color font margin</code>.</p>
+<h2>Checkbox</h2>
+<p>A checkbox shows a <code>Bool</code>. Name a Bool state and it flips that state. Or give it any Bool and an action, which is how you tick an item in a list.</p>
+<pre>state agree: Bool = false
+checkbox agree "I agree"
+
+checkbox picked[i] "Pick" -> picked = setAt(picked, i, !picked[i])</pre>
+<p>A checkbox can also be a table cell. It takes <code>size bold italic color font</code>.</p>
+<h2>Decimals</h2>
+<p><code>Float</code> is a separate type: <code>2.5</code>, <code>3.0</code>. Int and Float never mix on their own.</p>
+<pre>toFloat(3)            // Int to Float
+round(2.6)  floor()  ceil()   // Float to Int
+fixed(3.14159, 2)     // "3.14"
+toFloatOr(typed, 0.0) // text to Float
+toIntOr(typed, 0)     // text to Int
+sqrt(2.25)</pre>
+<h2>Structs</h2>
+<p>A <code>struct</code> groups typed fields into one value, and can have methods. Fields are always given by name.</p>
+<pre>struct Item {
+  name: Text
+  qty: Int
+  fn label(): Text {            // returns a value: read-only
+    return self.name + " x" + toText(self.qty)
+  }
+  fn take(n: Int) {             // returns nothing: may change self
+    if self.qty - n &gt; 0 { self.qty = self.qty - n }
+  }
+}
+state cart: List&lt;Item&gt; = [Item(name: "Tea", qty: 5)]
+text cart[0].label()
+button "Take" -> cart[0].take(2)
+cart[0].qty = 9                // change a field
+let more = cart[0] with qty: 7 // or make a changed copy</pre>
+<p>Structs are values: <code>let b = a</code> makes a copy, and changing <code>b</code> never changes <code>a</code>. A method that changes <code>self</code> returns nothing, and is called as its own statement on a variable (or a list item of one), not on a temporary or a loop variable. A struct cannot contain itself. Field names cannot be reserved words (so not <code>size</code> or <code>color</code>).</p>
+<h2>Libraries</h2>
+<p>Put shared logic in a library (Libraries tab), then use it from a page. A library holds only <code>struct</code> and <code>fn</code>: it cannot draw, hold state, change pages or use other libraries.</p>
+<pre>use "shop.ternlib"
+state cart: List&lt;shop.Item&gt; = []
+text toText(shop.total(cart))</pre>
+<p>Everything from a library is written with its name in front, so names never clash. Errors inside a library name its file.</p>
+<h2>Types</h2>
+<p><code>Int</code> <code>Float</code> <code>Text</code> <code>Bool</code> <code>Color</code> <code>Align</code> <code>Font</code> <code>List&lt;T&gt;</code> and your own structs. No automatic conversion: <code>"Age " + age</code> is an error, so write <code>toText(age)</code>.</p>
+<h2>Built-in functions</h2>
+<p><code>toText len append removeAt setAt slice sort sortOrder reverse range trim upper lower contains join rgb toFloat round floor ceil fixed sqrt toIntOr toFloatOr</code></p>
+<p><code>slice(xs, 2, 5)</code> is a new list from position 2 up to (not including) 5, and never fails if the range runs past the end. <code>sort(xs)</code> works on <code>Int</code>, <code>Float</code> or <code>Text</code> lists, smallest first. <code>sortOrder(xs)</code> gives the positions in sorted order, so you can sort one list by another: <code>for i in sortOrder(prices) { ... names[i] ... }</code>. <code>reverse(xs)</code> flips a list.</p>
+<h2>Reserved words</h2>
+<p><code>page state fn view style let if else for foreach in return true false null to placeholder text heading button input row column link divider para span table header cells bullet size color background align padding bold italic underline strike when image alt width height radius border font goto back struct with use self checkbox resizable modal gap margin grow maxwidth minwidth grid select radio textarea slider disabled saved every</code></p>`;
+const sw = $('swatches');
+for (const [name, hex] of Object.entries(Tern.COLORS)) {
+  const s = mk('span', 'sw'); const i = mk('i'); i.style.background = hex; s.append(i, name); sw.appendChild(s);
+}
+
+// ---------------------------------------------------------------- start
+const savedEx = store.get('tern.ex'), saved = store.get('tern.code');
+if (saved && savedEx && EXAMPLES.some(e => e.id === savedEx)) { curEx = savedEx; sel.value = savedEx; ta.value = saved; compile(); }
+else loadExample(curEx, true);
+})();
+</script>
+</body>
+</html>

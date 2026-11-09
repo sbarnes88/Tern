@@ -1,0 +1,30 @@
+page "Editable list"
+
+// Text boxes can edit one item of a list, or a field of a struct in a list,
+// including inside a table.
+struct Person {
+  name: Text
+  city: Text
+}
+
+state people: List<Person> = [
+  Person(name: "Ada", city: "London"),
+  Person(name: "Grace", city: "New York"),
+  Person(name: "Linus", city: "Helsinki")
+]
+
+view {
+  heading "People"
+  text "Edit any cell. The change is stored in the list." color gray
+  table padding 6 {
+    header "Name", "City"
+    for i in range(len(people)) {
+      cells input people[i].name placeholder "Name", input people[i].city placeholder "City"
+    }
+  }
+  button "Add a person" -> people = append(people, Person(name: "", city: ""))
+  divider
+  for p in people {
+    text p.name + " lives in " + p.city
+  }
+}

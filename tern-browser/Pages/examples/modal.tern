@@ -1,0 +1,34 @@
+page "Dialogs"
+
+// A modal is drawn over the page while its Bool is true. Tap the dim area or press Escape to close it.
+state items: List<Text> = ["Tea", "Cake", "Bread"]
+state askAt: Int = -1          // which item we are asking about; -1 means none
+state about: Bool = false
+
+view {
+  heading "Shopping list"
+  for i in range(len(items)) {
+    row {
+      text items[i]
+      button "Remove" -> askAt = i
+    }
+  }
+  button "About" -> about = true
+
+  // an expression modal says how it closes
+  modal askAt >= 0 width 320 radius 16 -> askAt = -1 {
+    heading "Remove this item?"
+    text items[askAt] bold
+    row {
+      button "Cancel" -> askAt = -1
+      button "Remove" background #b3261e color white -> { items = removeAt(items, askAt) askAt = -1 }
+    }
+  }
+
+  // a modal on a plain Bool state closes by setting it to false
+  modal about padding 24 {
+    heading "About"
+    text "Dialogs sit on top of the page, which is dimmed and cannot be tapped behind them."
+    button "Close" -> about = false
+  }
+}

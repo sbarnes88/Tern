@@ -1,0 +1,19 @@
+page "Welcome to Tern"
+
+// A page = state (what it remembers), fn (what it can do), view (what it shows)
+state name: Text = ""
+
+fn greeting(who: Text): Text {
+  if trim(who) == "" {
+    return "Type your name above."
+  }
+  return "Hello, " + trim(who) + "!"
+}
+
+view {
+  heading "Welcome to Tern" color blue
+  text "A small, strongly typed language for web pages."
+  divider
+  input name placeholder "Your name"
+  text greeting(name) bold
+}

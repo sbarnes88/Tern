@@ -1,0 +1,26 @@
+page "Tip calculator"
+
+state bill: Text = ""
+state percent: Int = 15
+
+// Int and Float are different types. toFloat() converts, and
+// toFloatOr() turns typed text into a number (or uses the fallback).
+fn amount(): Float {
+  return toFloatOr(bill, 0.0)
+}
+
+fn tip(): Float {
+  return amount() * toFloat(percent) / 100.0
+}
+
+view {
+  heading "Tip calculator"
+  input bill placeholder "Bill amount, e.g. 42.50"
+  row {
+    button "10%" bold when percent == 10 -> percent = 10
+    button "15%" bold when percent == 15 -> percent = 15
+    button "20%" bold when percent == 20 -> percent = 20
+  }
+  text "Tip (" + toText(percent) + "%): $" + fixed(tip(), 2)
+  text "Total: $" + fixed(amount() + tip(), 2) size 22 bold
+}

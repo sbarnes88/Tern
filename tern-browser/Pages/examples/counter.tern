@@ -1,0 +1,32 @@
+page "Counter"
+
+state count: Int = 0
+state step: Int = 1
+
+fn bump(by: Int) {
+  count = count + by
+}
+
+fn describe(n: Int): Text {
+  if n == 0 { return "Nothing yet." }
+  if n < 0 { return "Below zero." }
+  if n % 2 == 0 { return "Even." }
+  return "Odd."
+}
+
+view {
+  heading "Counter"
+  text "Count: " + toText(count) size 28 bold
+  text describe(count) italic color gray
+  row {
+    button "-" -> bump(0 - step)
+    button "+" -> bump(step)
+    button "Reset" -> count = 0
+  }
+  text "Step size: " + toText(step)
+  row {
+    button "Step 1" -> step = 1
+    button "Step 5" -> step = 5
+    button "Step 10" -> step = 10
+  }
+}

@@ -1,0 +1,8 @@
+page "Broken on purpose"
+
+state count: Int = 0
+
+view {
+  heading "Type errors are caught before the page runs"
+  text "Count: " + count
+}

@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Swift / Xcode (Swift Package Manager)
+/.build/
+.build/
+DerivedData/
+*.xcuserstate
+
+# tern-browser build output
+/tern-browser/Tern Browser.app/

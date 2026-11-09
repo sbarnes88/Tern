@@ -1,0 +1,42 @@
+page "Cart"
+
+// A struct groups typed fields. Its methods work on self.
+struct Item {
+  name: Text
+  price: Int
+  qty: Int
+
+  fn lineTotal(): Int {
+    return self.price * self.qty
+  }
+
+  // a method that returns nothing may change self
+  fn more() {
+    self.qty = self.qty + 1
+  }
+}
+
+state cart: List<Item> = [
+  Item(name: "Tea", price: 3, qty: 2),
+  Item(name: "Cake", price: 5, qty: 1)
+]
+
+fn total(): Int {
+  let sum = 0
+  for i in cart { sum = sum + i.lineTotal() }
+  return sum
+}
+
+view {
+  heading "Your cart"
+  for i in cart {
+    row {
+      text i.name + " x" + toText(i.qty) bold
+      text "$" + toText(i.lineTotal())
+    }
+  }
+  divider
+  text "Total: $" + toText(total()) size 20 bold
+  button "More tea" -> cart[0].more()
+  button "More cake" -> cart[1].more()
+}

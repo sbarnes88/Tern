@@ -1,0 +1,34 @@
+page "Feedback"
+
+// textarea is a multi-line text box, slider picks a number in a range,
+// and disabled greys a control out (it can depend on state with when).
+state notes: Text = ""
+state rating: Int = 3
+state agree: Bool = false
+state sent: Bool = false
+
+fn ready(): Bool {
+  return len(trim(notes)) >= 10 && agree
+}
+
+view {
+  heading "Feedback"
+  text "Tell us what you think (at least 10 characters)."
+  textarea notes placeholder "Your feedback" height 110 width 320
+  text toText(len(notes)) + " characters" size 10 color gray
+
+  text "Rating: " + toText(rating) + " / 5" bold
+  slider rating in 1 to 5 width 220
+
+  checkbox agree "You may quote me"
+  button "Send" disabled when !ready() -> sent = true
+  if !ready() {
+    text "Send turns on once the feedback is long enough and you agree." size 10 color gray
+  }
+
+  modal sent {
+    heading "Thank you"
+    text "You rated us " + toText(rating) + " out of 5."
+    button "Close" -> sent = false
+  }
+}

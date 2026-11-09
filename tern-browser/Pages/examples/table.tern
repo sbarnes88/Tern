@@ -1,0 +1,33 @@
+page "Order"
+
+state names: List<Text> = ["Tea", "Coffee", "Cake"]
+state prices: List<Int> = [3, 4, 5]
+state qty: List<Int> = [2, 1, 3]
+
+fn money(n: Int): Text {
+  return "$" + toText(n)
+}
+
+fn total(): Int {
+  let sum = 0
+  for i in range(len(names)) {
+    sum = sum + prices[i] * qty[i]
+  }
+  return sum
+}
+
+view {
+  heading "Your order"
+  table {
+    header "Item", "Price", "Qty", "Subtotal"
+    for i in range(len(names)) {
+      cells names[i], money(prices[i]), toText(qty[i]), money(prices[i] * qty[i])
+    }
+  }
+  text "Total: " + money(total()) size 20 bold
+  row {
+    for i in range(len(names)) {
+      button "+ " + names[i] -> qty = setAt(qty, i, qty[i] + 1)
+    }
+  }
+}

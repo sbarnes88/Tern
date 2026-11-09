@@ -1,0 +1,24 @@
+page "Shop with a library"
+
+// The rules live in shop.ternlib (see the Libraries tab).
+// Everything from the library is written with "shop." in front.
+use "shop.ternlib"
+
+state cart: List<shop.Item> = [shop.make("Tea", 3), shop.make("Cake", 5)]
+
+fn addTea() {
+  cart = append(cart, shop.make("Tea", 3))
+}
+
+view {
+  heading "Your cart"
+  for i in cart {
+    row {
+      text i.name
+      text shop.money(shop.lineTotal(i))
+    }
+  }
+  divider
+  text "Total: " + shop.money(shop.total(cart)) bold size 20
+  button "Add tea" -> addTea()
+}

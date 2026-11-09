@@ -1,0 +1,36 @@
+page "Tern in five minutes"
+
+style lead { size 15 color gray italic }
+style callout { background #eef3fc padding 12 }
+
+view {
+  heading "Tern in five minutes"
+  text "A short guide to a very small language." style lead
+  divider
+  para {
+    span "Tern pages are made of "
+    span "state" bold
+    span ", "
+    span "functions" bold
+    span " and a "
+    span "view" bold
+    span ". Everything is type-checked before it runs."
+  }
+  heading "What you get" size 18
+  bullet "Text in any size, bold, italic, underline or strike"
+  bullet "Colours by name, by hex like #0b57d0, or rgb(r, g, b)"
+  bullet "Tables, lists and layout rows"
+  bullet "Named styles you write once and reuse"
+  heading "Quick comparison" size 18
+  table {
+    header "Type", "Example", "Holds"
+    cells "Int", "42", "whole numbers"
+    cells "Text", "\"hi\"", "words"
+    cells "Bool", "true", "yes or no"
+    cells "Color", "#0b57d0", "a colour"
+  }
+  column style callout {
+    text "Tip" bold color blue
+    text "Mistakes are reported with a line number before the page runs."
+  }
+}

@@ -1,0 +1,84 @@
+page "Tern Browser"
+
+// The start page. It is an ordinary Tern page, shown at tern://home
+
+style card { background #f6f8fa padding 14 radius 10 border #d0d7de }
+style small { size 11 color gray }
+
+state tips: Bool = false
+
+view {
+  row {
+    image "examples/logo" width 48 alt "Tern"
+    column {
+      heading "Tern Browser" size 26
+      text "A browser for pages written in Tern. No HTML, no JavaScript." style small
+    }
+  }
+  divider
+
+  heading "Try a page" size 16
+  table {
+    header "Page", "What it shows"
+    cells "Welcome", "State, functions and a text box"
+    cells "Counter", "Buttons that change state"
+    cells "Multi-page site", "Several views with goto and back"
+    cells "Tip calculator", "Float numbers and fixed()"
+    cells "Data table", "Sorting, pages, checkboxes and a pinned header"
+    cells "Editable list", "Text boxes that edit list items, in a table"
+    cells "Dialogs", "A modal that appears on top of the page"
+    cells "Layout", "Gap, margin, alignment, grow and a grid"
+    cells "Form", "Dropdown, radio buttons, checkbox and a modal"
+    cells "Feedback", "Multi-line text, a slider and disabled buttons"
+    cells "Stopwatch", "A timer, and laps that are saved between visits"
+    cells "Structs and Library", "Your own types, and sharing code with use"
+    cells "Foreach loop", "Draw a list with foreach"
+  }
+  row {
+    link "Welcome" to "examples/welcome.tern"
+    link "Counter" to "examples/counter.tern"
+    link "Todo list" to "examples/todo.tern"
+    link "Style gallery" to "examples/styles.tern"
+    link "Price table" to "examples/table.tern"
+    link "Article" to "examples/article.tern"
+  }
+  row {
+    link "Multi-page site" to "examples/pages.tern"
+    link "Tip calculator" to "examples/tip.tern"
+    link "Fonts" to "examples/fonts.tern"
+    link "Images" to "examples/images.tern"
+    link "Buttons" to "examples/buttons.tern"
+    link "Quiz" to "examples/quiz.tern"
+    link "Data table" to "examples/datatable.tern"
+    link "Editable list" to "examples/editable.tern"
+    link "Dialogs" to "examples/modal.tern"
+    link "Layout" to "examples/layout.tern"
+    link "Form" to "examples/form.tern"
+    link "Feedback" to "examples/feedback.tern"
+    link "Stopwatch" to "examples/stopwatch.tern"
+    link "Structs" to "examples/structs.tern"
+    link "Library" to "examples/library.tern"
+    link "Foreach loop" to "examples/foreach.tern"
+    link "Broken on purpose" to "examples/broken.tern"
+  }
+
+  divider
+  heading "Open your own pages" size 16
+  column style card {
+    bullet "Choose File > Open (Command-O), or drag a .tern file onto this window."
+    bullet "Type a path or a web address in the address bar, like ~/Sites/home.tern or example.com/index.tern."
+    bullet "Links between .tern files work like links between web pages. Back and Forward remember where you were."
+    bullet "Images are found next to the page: image \"photo\" looks for photo.png, photo.jpg, photo.svg and so on."
+  }
+
+  button "More tips" -> tips = !tips
+  if tips {
+    column style card {
+      text "Address shortcuts" bold
+      bullet "page.tern#menu opens a page straight at its view called menu."
+      bullet "A link written to \"#menu\" moves to that view on the same page."
+      bullet "Reload (Command-R) starts the page again with fresh state."
+      bullet "View Source (Option-Command-U) shows the Tern code behind the page."
+    }
+  }
+}

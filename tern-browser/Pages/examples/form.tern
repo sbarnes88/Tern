@@ -1,0 +1,52 @@
+page "Sign up"
+
+// select is a dropdown, radio shows every choice. Both store the choice in a Text state
+// (or a place inside one, like members[i].role).
+struct Member {
+  name: Text
+  role: Text
+}
+
+state name: Text = ""
+state country: Text = ""
+state plan: Text = "Free"
+state agree: Bool = false
+state done: Bool = false
+state countries: List<Text> = ["France", "Japan", "Peru"]
+state roles: List<Text> = ["admin", "editor", "viewer"]
+state members: List<Member> = [
+  Member(name: "Ada", role: "admin"),
+  Member(name: "Linus", role: "")
+]
+
+fn ready(): Bool {
+  return trim(name) != "" && country != "" && agree
+}
+
+view {
+  heading "Sign up"
+  input name placeholder "Your name"
+  select country in countries placeholder "Country"
+  text "Plan" bold
+  radio plan in ["Free", "Pro", "Team"]
+  checkbox agree "I agree to the terms"
+  button "Create account" -> if ready() { done = true }
+  if !ready() {
+    text "Enter a name, pick a country and agree to continue." color gray size 10
+  }
+
+  divider
+  heading "Team" size 16
+  table padding 8 {
+    header "Member", "Role"
+    for i in range(len(members)) {
+      cells members[i].name, select members[i].role in roles placeholder "Pick a role"
+    }
+  }
+
+  modal done {
+    heading "Welcome"
+    text name + " from " + country + ", on the " + plan + " plan."
+    button "Done" -> done = false
+  }
+}

@@ -1,0 +1,36 @@
+page "Stopwatch"
+
+// every runs an action on a timer while its condition holds (here: while running).
+// A saved state is kept between visits, so the laps are still here when you come back.
+state running: Bool = false
+state tenths: Int = 0
+saved state laps: List<Int> = []
+
+fn show(t: Int): Text {
+  return toText(t / 10) + "." + toText(t % 10) + " s"
+}
+
+view {
+  heading "Stopwatch"
+  text show(tenths) size 36 bold
+  every 100 when running -> tenths = tenths + 1
+
+  row {
+    if running {
+      button "Pause" -> running = false
+    } else {
+      button "Start" -> running = true
+    }
+    button "Lap" -> laps = append(laps, tenths)
+    button "Reset" -> { running = false tenths = 0 }
+  }
+
+  heading "Laps" size 16
+  if len(laps) == 0 {
+    text "No laps yet." color gray
+  }
+  for i in range(len(laps)) {
+    bullet toText(i + 1) + ".  " + show(laps[i])
+  }
+  button "Clear laps" -> laps = []
+}

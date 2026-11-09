@@ -1,0 +1,38 @@
+page "Quiz"
+
+state questions: List<Text> = ["What is 2 + 2?", "Capital of France?", "Is 7 prime?"]
+state answers: List<Text> = ["4", "Paris", "yes"]
+state index: Int = 0
+state score: Int = 0
+state guess: Text = ""
+state feedback: Text = ""
+
+fn submit() {
+  if lower(trim(guess)) == lower(answers[index]) {
+    score = score + 1
+    feedback = "Correct!"
+  } else {
+    feedback = "Not quite. The answer was " + answers[index] + "."
+  }
+  guess = ""
+  index = index + 1
+}
+
+fn restart() {
+  index = 0
+  score = 0
+  feedback = ""
+}
+
+view {
+  heading "Quiz"
+  if index < len(questions) {
+    text "Question " + toText(index + 1) + ": " + questions[index] size 16 bold
+    input guess placeholder "Your answer"
+    button "Submit" -> submit()
+  } else {
+    text "Finished! Score: " + toText(score) + " out of " + toText(len(questions)) size 20 bold color green
+    button "Play again" -> restart()
+  }
+  text feedback italic
+}

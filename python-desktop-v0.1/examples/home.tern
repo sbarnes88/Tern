@@ -1,0 +1,25 @@
+page "Welcome to Tern"
+
+// Pages are plain text: some state, some functions, one view.
+state name: Text = ""
+
+fn greeting(who: Text): Text {
+  if trim(who) == "" {
+    return "Type your name above."
+  }
+  return "Hello, " + trim(who) + "!"
+}
+
+view {
+  heading "Welcome to Tern"
+  text "A tiny strongly typed language for web pages. No JavaScript."
+  divider
+  input name placeholder "Your name"
+  text greeting(name)
+  divider
+  row {
+    link "Counter" to "counter.tern"
+    link "Todo list" to "todo.tern"
+    link "Broken page" to "broken.tern"
+  }
+}

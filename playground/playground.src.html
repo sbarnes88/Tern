@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tern Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Playfair+Display:wght@400;700&family=Caveat:wght@400;700&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* Plan: a quiet tool in cool blue-greys. Code on one side, the page it makes on the other.
+   Phone: one pane at a time behind three tabs. Wide: code and page side by side. */
+:root {
+  --bg: #eef1f6; --panel: #ffffff; --ink: #1b2430; --muted: #5b6676; --line: #d5dbe6;
+  --accent: #0b57d0; --accent-ink: #ffffff; --err: #b3261e; --err-bg: #fdecea; --ok: #1a7f37;
+  --code-bg: #ffffff; --code-ink: #1b2430; --chip: #e4e9f2;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1219; --panel: #151c26; --ink: #e6ebf3; --muted: #94a0b4; --line: #2a3445;
+    --accent: #6ea8ff; --accent-ink: #0d1219; --err: #ff8a80; --err-bg: #3a1c1a; --ok: #5fd08a;
+    --code-bg: #0f151e; --code-ink: #e6ebf3; --chip: #202a39; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1219; --panel: #151c26; --ink: #e6ebf3; --muted: #94a0b4; --line: #2a3445;
+  --accent: #6ea8ff; --accent-ink: #0d1219; --err: #ff8a80; --err-bg: #3a1c1a; --ok: #5fd08a;
+  --code-bg: #0f151e; --code-ink: #e6ebf3; --chip: #202a39; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--sans); display: flex; flex-direction: column; }
+button, select, textarea, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; }
+.mark { font: 600 20px var(--mono); letter-spacing: -.02em; }
+.mark small { font: 400 11px var(--mono); color: var(--muted); margin-left: 4px; }
+.spacer { flex: 1; }
+select, .btn { min-height: 40px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 0 12px; }
+.btn { cursor: pointer; }
+.btn:active { background: var(--chip); }
+select { max-width: 46vw; }
+
+nav { display: flex; gap: 6px; padding: 0 16px 8px; }
+nav button { flex: 1; min-width: 0; padding: 0 4px; min-height: 44px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; font-weight: 600; color: var(--muted); cursor: pointer; }
+nav button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+main { flex: 1; min-height: 0; display: flex; padding: 0 16px 12px; gap: 12px; }
+.pane { flex: 1; min-width: 0; min-height: 0; display: none; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+body[data-view="code"] .pane-code, body[data-view="page"] .pane-page, body[data-view="help"] .pane-help, body[data-view="images"] .pane-images, body[data-view="libs"] .pane-libs { display: flex; }
+
+/* code pane */
+.chips { display: flex; gap: 6px; padding: 8px; overflow-x: auto; border-bottom: 1px solid var(--line); flex: none; }
+.chips button { flex: none; min-width: 40px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--chip); font: 600 15px var(--mono); cursor: pointer; }
+.chips select { min-height: 36px; font-size: 14px; flex: none; }
+textarea#code { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; padding: 12px; background: var(--code-bg); color: var(--code-ink); font: 14px/1.55 var(--mono); tab-size: 2; white-space: pre; overflow: auto; }
+textarea#code:focus-visible { outline-offset: -2px; }
+.status { flex: none; border-top: 1px solid var(--line); padding: 8px 12px; font-size: 13px; display: flex; gap: 8px; align-items: baseline; min-height: 38px; }
+.status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; align-self: center; }
+.status.bad { background: var(--err-bg); color: var(--err); cursor: pointer; }
+.status.bad .dot { background: var(--err); }
+.status .msg { overflow-wrap: anywhere; }
+
+/* page pane: always light, like paper in a browser */
+.bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font: 12px var(--mono); color: var(--muted); }
+.bar .bk { flex: none; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--chip); font: 600 20px/1 var(--sans); cursor: pointer; color: var(--ink); }
+.bar .bk:disabled { opacity: .35; cursor: default; }
+.bar .clr { flex: none; min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--chip); font: 600 12px var(--sans); color: var(--ink); cursor: pointer; }
+.bar .addr { flex: 1; background: var(--chip); border-radius: 999px; padding: 4px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.paper { flex: 1; min-height: 0; overflow: auto; background: #ffffff; color: #1f2328; padding: 20px 18px 28px; font: 16px/1.5 var(--sans); }
+.pane-page { position: relative; }
+.mlayer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15, 23, 42, .5); border-radius: 0 0 12px 12px; }
+.mlayer[hidden] { display: none; }
+.mdlg { background: #fff; color: #1f2328; border-radius: 12px; padding: 20px; width: 22rem; max-width: 100%; max-height: 100%; overflow: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 10px; font: 16px/1.5 var(--sans); }
+.mdlg > * { min-width: 0; }
+.mdlg:focus { outline: none; }
+.page { display: flex; flex-direction: column; gap: 10px; max-width: 46rem; align-items: stretch; }
+.page > * { min-width: 0; }
+.t { overflow-wrap: anywhere; white-space: pre-wrap; border-radius: 4px; }
+.t.bullet { display: flex; gap: 10px; padding-left: 4px; }
+.t.bullet::before { content: '\2022'; flex: none; }
+.t.bullet span { min-width: 0; }
+.row, .col { display: flex; gap: 8px; }
+.row { flex-wrap: wrap; align-items: center; }
+.row > * { flex: var(--grow, 0 1 auto); }
+.col.aligned > * { align-self: auto; }   /* buttons, links and images start left on their own; a column's align overrides that */
+.grid { display: grid; gap: 8px; align-items: start; }
+.grid > * { min-width: 0; }
+.col { flex-direction: column; }
+.divider { border: 0; border-top: 1px solid #d0d7de; margin: 4px 0; width: 100%; }
+.tbtn { align-self: flex-start; min-height: 40px; padding: 0 14px; border: 1px solid #c5cbd6; background: #eef1f6; color: #1f2328; border-radius: 8px; cursor: pointer; font: inherit; }
+.tbtn { -webkit-tap-highlight-color: transparent; }
+.tbtn:active { filter: brightness(.94); }
+.tin { min-height: 40px; padding: 0 12px; border: 1px solid #8c959f; border-radius: 6px; background: #fff; color: #1f2328; font-size: 16px; max-width: 100%; width: 18rem; }
+.tt td input.tin { width: 100%; min-width: 9rem; box-sizing: border-box; }
+.tta { display: block; box-sizing: border-box; width: 18rem; max-width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid #8c959f; border-radius: 6px; background: #fff; color: #1f2328; font: 16px/1.4 var(--sans); resize: vertical; align-self: flex-start; }
+.tslider { width: 18rem; max-width: 100%; min-height: 40px; align-self: flex-start; accent-color: #0b57d0; }
+button:disabled, input:disabled, select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
+.tcheck:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.tsel { min-height: 40px; padding: 0 10px; border: 1px solid #8c959f; border-radius: 6px; background: #fff; color: #1f2328; font-size: 16px; max-width: 100%; align-self: flex-start; }
+.tt td .tsel { width: 100%; min-width: 7rem; }
+.tradio { display: flex; flex-direction: column; align-self: flex-start; }
+.tcheck { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; align-self: flex-start; }
+.tcheck input { width: 22px; height: 22px; margin: 0; accent-color: #0b57d0; }
+.tlink { color: #0b57d0; cursor: pointer; text-decoration: underline; align-self: flex-start; }
+.para { overflow-wrap: anywhere; }
+.para .sp { border-radius: 3px; }
+.tscroll { overflow: auto; max-width: 100%; }
+.tt th { position: relative; }
+.colgrip { position: absolute; top: 0; right: 0; width: 14px; height: 100%; cursor: col-resize; touch-action: none; z-index: 2; }
+.colgrip::after { content: ''; position: absolute; top: 20%; bottom: 20%; left: 6px; width: 2px; background: #8c959f; border-radius: 1px; }
+.tt thead th { position: sticky; top: 0; z-index: 1; box-shadow: 0 1px 0 #d0d7de; }
+.timg { display: block; max-width: 100%; height: auto; align-self: flex-start; }
+.timg.broken { background: #f6f8fa; border: 1px dashed #c5cbd6; padding: 12px; min-width: 120px; min-height: 48px; color: #6e7781; font-size: 13px; }
+.imgs { overflow: auto; padding: 16px 18px 28px; }
+.imgs p { margin: 0 0 10px; color: var(--muted); }
+.imgs code { font: 13px var(--mono); background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+.asset { display: grid; grid-template-columns: 72px 1fr; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.asset img { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+.asset .nm { font: 600 14px var(--mono); overflow-wrap: anywhere; }
+.asset .acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.asset .acts button { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; cursor: pointer; font-size: 13px; }
+.note { font-size: 13px; color: var(--muted); margin-top: 12px; }
+.lib { border-top: 1px solid var(--line); padding: 10px 0; }
+.lib .nm { font: 600 14px var(--mono); overflow-wrap: anywhere; }
+.lib textarea { display: block; width: 100%; box-sizing: border-box; height: 180px; margin: 6px 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--code-bg); color: var(--code-ink); font: 13px/1.5 var(--mono); tab-size: 2; white-space: pre; overflow: auto; resize: vertical; }
+.lib .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.lib .acts button, .newlib button, .newlib input { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; }
+.newlib { display: flex; gap: 8px; margin: 10px 0; }
+.newlib input { flex: 1; min-width: 0; font: 14px var(--mono); }
+table.tt { border-collapse: collapse; font-size: .95em; }
+.tt th, .tt td { border: 1px solid #d0d7de; padding: 7px 12px; text-align: left; }
+.tt th { background: #eef1f6; }
+.tt tbody tr:nth-child(even) td { background: #f6f8fa; }
+.rterr { margin: 0 0 12px; padding: 8px 12px; background: var(--err-bg); color: var(--err); border-radius: 8px; font-size: 13px; }
+.errcard { border-left: 4px solid #b3261e; background: #fdecea; color: #7d1a14; padding: 14px 16px; border-radius: 6px; }
+.errcard h2 { margin: 0 0 6px; font-size: 18px; }
+.errcard pre { margin: 8px 0 0; font: 13px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* help pane */
+.help { overflow: auto; padding: 16px 18px 28px; }
+.help h2 { font-size: 16px; margin: 20px 0 6px; }
+.help h2:first-child { margin-top: 0; }
+.help p { margin: 6px 0; color: var(--muted); }
+.help code, .help pre { font: 13px var(--mono); }
+.help code { background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+.help pre { background: var(--chip); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 6px 0; }
+.help table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 6px 0; }
+.help td, .help th { border-bottom: 1px solid var(--line); padding: 6px 6px 6px 0; text-align: left; vertical-align: top; }
+.sw { display: inline-flex; align-items: center; gap: 6px; margin: 3px 10px 3px 0; font: 13px var(--mono); }
+.sw i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line); display: inline-block; }
+
+@media (min-width: 900px) {
+  nav { max-width: 460px; }
+  body[data-view="page"] .pane-code, body[data-view="code"] .pane-page { display: flex; }
+  body[data-view="help"] .pane-code, body[data-view="images"] .pane-code, body[data-view="libs"] .pane-code { display: none; }
+  body[data-view="help"] .pane-page, body[data-view="images"] .pane-page, body[data-view="libs"] .pane-page { display: flex; }
+}
+
+</style>
+</head>
+<body data-view="code">
+<header>
+  <div class="mark">tern<small>0.3</small></div>
+  <div class="spacer"></div>
+  <label class="sr" for="ex" style="position:absolute;left:-9999px">Example page</label>
+  <select id="ex"></select>
+  <button class="btn" id="reset" type="button">Reset</button>
+</header>
+<nav role="tablist" aria-label="View">
+  <button role="tab" id="tab-code" aria-selected="true" data-go="code">Code</button>
+  <button role="tab" id="tab-page" aria-selected="false" data-go="page">Page</button>
+  <button role="tab" id="tab-images" aria-selected="false" data-go="images">Images</button>
+  <button role="tab" id="tab-libs" aria-selected="false" data-go="libs">Libraries</button>
+  <button role="tab" id="tab-help" aria-selected="false" data-go="help">Help</button>
+</nav>
+<main>
+  <section class="pane pane-code" aria-label="Code">
+    <div class="chips" id="chips" role="toolbar" aria-label="Quick insert"></div>
+    <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Tern code"></textarea>
+    <div class="status" id="status" role="status"><span class="dot"></span><span class="msg">Ready</span></div>
+  </section>
+  <section class="pane pane-page" aria-label="Page">
+    <div class="bar"><button class="bk" id="back" type="button" aria-label="Back" disabled>&#8249;</button><span class="addr" id="addr">tern://page</span><button class="clr" id="clearsaved" type="button" hidden>Clear saved</button></div>
+    <div class="paper" id="paper"><div id="rterr" class="rterr" hidden></div><div class="page" id="page"></div></div>
+    <div class="mlayer" id="mlayer" hidden><div class="mdlg" id="mdlg" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+  </section>
+  <section class="pane pane-images" aria-label="Images">
+    <div class="imgs">
+      <p>Use a picture in Tern like this: <code>image "mountains" width 240</code></p>
+      <button class="btn" id="addimg" type="button">Add a photo</button>
+      <input type="file" id="file" accept="image/*" hidden>
+      <p class="note" id="imgnote"></p>
+      <div id="imglist"></div>
+    </div>
+  </section>
+  <section class="pane pane-libs" aria-label="Libraries">
+    <div class="imgs">
+      <p>A library is a file of <code>struct</code> and <code>fn</code> that pages share. Use one with <code>use "shop.ternlib"</code>, then call <code>shop.total(cart)</code>.</p>
+      <div class="newlib"><input id="newlibname" placeholder="name, like shop" aria-label="New library name" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="addlib" type="button">Add library</button></div>
+      <p class="note" id="libnote"></p>
+      <div id="liblist"></div>
+    </div>
+  </section>
+  <section class="pane pane-help" aria-label="Help">
+    <div class="help" id="help"></div>
+  </section>
+</main>
+
+<script>/*TERN_JS*/</script>
+<script>/*EXAMPLES_JS*/</script>
+<script>
+(function () {
+'use strict';
+const { EXAMPLES } = TernExamples;
+const $ = id => document.getElementById(id);
+const ta = $('code'), pageEl = $('page'), paper = $('paper'), statusEl = $('status');
+let page = null, curEx = 'styles', lastScreen = null;   // start on the style gallery
+
+// ---------------------------------------------------------------- images: built-in samples + your own
+const svg = body => 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" ${body}</svg>`);
+const SAMPLES = {
+  mountains: svg(`viewBox="0 0 640 360"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ec5fe"/><stop offset="1" stop-color="#fde2c8"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><circle cx="470" cy="110" r="42" fill="#fff3c4"/><polygon points="0,300 130,150 230,260 330,120 470,280 560,190 640,270 640,360 0,360" fill="#5b7a99"/><polygon points="0,330 100,250 200,320 320,230 450,330 560,260 640,320 640,360 0,360" fill="#2f4a66"/>`),
+  sunset: svg(`viewBox="0 0 640 360"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7b4fa0"/><stop offset=".6" stop-color="#ff9a62"/><stop offset="1" stop-color="#ffd27a"/></linearGradient></defs><rect width="640" height="360" fill="url(#s)"/><circle cx="320" cy="215" r="70" fill="#fff1b8"/><rect y="215" width="640" height="145" fill="#2c3e6b"/><g stroke="#ffd27a" stroke-width="4" opacity=".7"><line x1="250" y1="235" x2="390" y2="235"/><line x1="270" y1="255" x2="370" y2="255"/><line x1="290" y1="275" x2="350" y2="275"/></g>`),
+  avatar: svg(`viewBox="0 0 200 200"><rect width="200" height="200" fill="#cfe0ff"/><ellipse cx="100" cy="200" rx="70" ry="58" fill="#0b57d0"/><circle cx="100" cy="82" r="38" fill="#f2c6a0"/><path d="M60 78 C60 38 140 38 140 78 C128 60 76 60 60 78 Z" fill="#3b2a20"/>`),
+  logo: svg(`viewBox="0 0 200 200"><defs><linearGradient id="l" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#0b57d0"/></linearGradient></defs><rect width="200" height="200" rx="44" fill="url(#l)"/><rect x="48" y="52" width="104" height="22" rx="8" fill="#fff"/><rect x="88" y="52" width="24" height="98" rx="8" fill="#fff"/><circle cx="146" cy="136" r="10" fill="#bfdbfe"/>`),
+};
+let mine = {};
+try { mine = JSON.parse(localStorage.getItem('tern.assets') || '{}') || {}; } catch (e) { mine = {}; }
+const assets = Object.assign({}, SAMPLES, mine);
+const assetNames = () => Object.keys(assets);
+let libs = {};
+try { libs = JSON.parse(localStorage.getItem('tern.libs') || '{}') || {}; } catch (e) { libs = {}; }
+const FONT_CSS = {
+  sans: "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif", serif: "'Lora',Georgia,'Times New Roman',serif",
+  mono: "'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace", display: "'Playfair Display',Georgia,serif",
+  hand: "'Caveat','Comic Sans MS',cursive", rounded: "'Nunito',system-ui,sans-serif",
+};
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage may be unavailable */ } },
+};
+
+// ---------------------------------------------------------------- tabs
+function go(view) {
+  document.body.dataset.view = view;
+  for (const b of document.querySelectorAll('nav button')) b.setAttribute('aria-selected', String(b.dataset.go === view));
+}
+for (const b of document.querySelectorAll('nav button')) b.addEventListener('click', () => go(b.dataset.go));
+
+// ---------------------------------------------------------------- examples
+const sel = $('ex');
+for (const e of EXAMPLES) { const o = document.createElement('option'); o.value = e.id; o.textContent = e.name; sel.appendChild(o); }
+function loadExample(id, keepView) {
+  const e = EXAMPLES.find(x => x.id === id); if (!e) return false;
+  if (e.libs) { Object.assign(libs, e.libs); saveLibs(); renderLibs(); }
+  curEx = id; sel.value = id; ta.value = e.src; store.set('tern.ex', id); store.set('tern.code', e.src);
+  compile(); if (!keepView) go('page'); return true;
+}
+sel.addEventListener('change', () => loadExample(sel.value));
+$('reset').addEventListener('click', () => loadExample(curEx, true));
+
+// ---------------------------------------------------------------- compile
+function showStatus(err) {
+  statusEl.className = 'status' + (err ? ' bad' : '');
+  statusEl.querySelector('.msg').textContent = err ? `${err.file ? err.file + ' ' : ''}Line ${err.pos[0]}: ${err.msg}` : 'Type-checks. Page is live.';
+}
+function errorCard(err, src) {
+  const rows = src.split('\n'), line = err.pos[0], col = err.pos[1];
+  const card = document.createElement('div'); card.className = 'errcard';
+  const h = document.createElement('h2'); h.textContent = err.phase.replace(/^./, c => c.toUpperCase()) + (err.file ? ' in ' + err.file : '');
+  if (err.file) src = libs[err.file.replace(/\.ternlib$/, '')] || '';
+  const p = document.createElement('div'); p.textContent = err.msg;
+  card.append(h, p);
+  if (line >= 1 && line <= rows.length) {
+    const pre = document.createElement('pre');
+    pre.textContent = `line ${line}\n${rows[line - 1]}\n${' '.repeat(Math.max(col - 1, 0))}^`;
+    card.append(pre);
+  }
+  return card;
+}
+// `every` timers: the engine lists them in page.timers after each render; they run only while the browser tab is visible
+const timerRuns = new Map(), timerLatest = new Map();
+function syncTimers() {
+  const want = new Map((page ? page.timers || [] : []).map(t => [t.key, t]));
+  for (const [k, r] of timerRuns) if (!want.has(k) || want.get(k).ms !== r.ms) { clearInterval(r.id); timerRuns.delete(k); timerLatest.delete(k); }
+  for (const [k, t] of want) {
+    timerLatest.set(k, t);
+    if (!timerRuns.has(k)) timerRuns.set(k, { ms: t.ms, id: setInterval(() => { const cur = timerLatest.get(k); if (cur && !document.hidden) run(() => cur.tick()); }, t.ms) });
+  }
+}
+// `saved state` values are kept in localStorage, per page title, and handed back to the page when it loads
+const savedKey = src => { const m = src.match(/^\s*page\s+"([^"]*)"/m); return 'tern.saved:' + (m ? m[1] : ''); };
+let lastSaved = null, curSavedKey = '';
+function readSaved(key) { try { const j = localStorage.getItem(key); return j ? JSON.parse(j) : undefined; } catch (_) { return undefined; } }
+function persistSaved() {
+  if (!page) return;
+  const j = page.savedJSON();
+  if (j !== null && j !== lastSaved) { try { localStorage.setItem(curSavedKey, j); } catch (_) {} lastSaved = j; }
+  $('clearsaved').hidden = page.savedNames.length === 0;
+  if (page.savedTooBig) showRuntime('This page\'s saved data is over 64 KB, so it is not being kept.');
+}
+$('clearsaved').addEventListener('click', () => { try { localStorage.removeItem(curSavedKey); } catch (_) {} lastSaved = null; compile(); });
+function compile() {
+  const src = ta.value;
+  curSavedKey = savedKey(src);
+  lastSaved = null;
+  store.set('tern.code', src);
+  $('rterr').hidden = true;
+  try {
+    page = Tern.load(src, { assets: assetNames(), libraries: libs, libraryHint: 'add it in the Libraries tab', saved: readSaved(curSavedKey) });
+    showStatus(null);
+    document.title = page.title + ' | Tern Playground';
+    pageEl.replaceChildren(); lastScreen = null; refresh();
+  } catch (e) {
+    if (!(e instanceof Tern.TernError)) throw e;
+    page = null; syncTimers(); showStatus(e); $('clearsaved').hidden = true;
+    $('addr').textContent = 'tern://error'; $('back').disabled = true;
+    pageEl.replaceChildren(errorCard(e, src));
+  }
+}
+statusEl.addEventListener('click', () => {
+  const m = statusEl.querySelector('.msg').textContent.match(/^Line (\d+)/);   // library errors are fixed in the Libraries tab
+  if (m) jumpToLine(parseInt(m[1], 10));
+});
+function jumpToLine(n) {
+  const lines = ta.value.split('\n'); let start = 0;
+  for (let i = 0; i < n - 1; i++) start += lines[i].length + 1;
+  ta.focus(); ta.setSelectionRange(start, start + (lines[n - 1] || '').length);
+}
+
+// ---------------------------------------------------------------- DOM renderer (patches in place so typing keeps focus)
+const mk = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+function css(st, kind) {   // turns a style object from the engine into CSS
+  const s = Object.assign({}, kind === 'heading' ? { size: 22, bold: true } : {}, kind === 'link' ? { underline: true } : {}, st);
+  const out = [];
+  if (s.size) out.push(`font-size:${(s.size * 4 / 3).toFixed(1)}px;line-height:1.3`);
+  if ('bold' in s) out.push(`font-weight:${s.bold ? 700 : 400}`);
+  if ('italic' in s) out.push(`font-style:${s.italic ? 'italic' : 'normal'}`);
+  if ('underline' in s || 'strike' in s) out.push(`text-decoration:${[s.underline && 'underline', s.strike && 'line-through'].filter(Boolean).join(' ') || 'none'}`);
+  if (s.color) out.push(`color:${s.color}`);
+  if (s.background) out.push(`background:${s.background}`);
+  if (s.font) out.push(`font-family:${FONT_CSS[s.font]}`);
+  if (s.radius !== undefined) out.push(`border-radius:${s.radius}px`);
+  if (s.border) out.push(`border:1px solid ${s.border}`);
+  if (s.width) out.push(`width:${s.width}px;max-width:100%`);
+  if (s.height) out.push(`height:${s.height}px` + (s.width ? ';object-fit:cover' : ''));
+  if (kind === 'image') { if (s.align) out.push(`align-self:${{ left: 'flex-start', center: 'center', right: 'flex-end', spread: 'flex-start' }[s.align]}`); }
+  else if (kind === 'row') { if (s.align) out.push(`justify-content:${{ left: 'flex-start', center: 'center', right: 'flex-end', spread: 'space-between' }[s.align]}`); }
+  else if (kind === 'column') { if (s.align) out.push(`align-items:${{ left: 'flex-start', center: 'center', right: 'flex-end', spread: 'flex-start' }[s.align]}`); }
+  else if (s.align) out.push(`text-align:${s.align === 'spread' ? 'left' : s.align}`);
+  if (s.gap !== undefined) out.push(`gap:${s.gap}px`);
+  if (s.margin !== undefined) out.push(`margin:${s.margin}px`);
+  if (s.grow) out.push(`--grow:${s.grow} 1 0px;min-width:0`);   // a share of the row's free width (see .row > *)
+  if (s.maxwidth) out.push(`max-width:${s.maxwidth}px`);
+  if (s.minwidth) out.push(`min-width:${s.minwidth}px`);
+  if (s.padding !== undefined) out.push(`padding:${s.padding}px`);
+  else if (s.background && (kind === 'text' || kind === 'heading' || kind === 'bullet')) out.push('padding:4px 10px');
+  return out.join(';');
+}
+let radioId = 0;
+function build(n) {
+  let e;
+  switch (n.t) {
+    case 'heading': case 'text': e = mk('div', 't ' + n.t); break;
+    case 'bullet': e = mk('div', 't bullet'); e.appendChild(mk('span')); break;
+    case 'para': e = mk('div', 'para'); break;
+    case 'button': e = mk('button', 'tbtn'); e.type = 'button';
+      e.addEventListener('click', () => run(() => e._n.click())); break;
+    case 'textarea': e = mk('textarea', 'tta'); e.autocomplete = 'off'; e.spellcheck = false;
+      e.addEventListener('input', () => run(() => e._n.set(e.value))); break;
+    case 'slider': e = mk('input', 'tslider'); e.type = 'range';
+      e.addEventListener('input', () => run(() => e._n.set(Number(e.value)))); break;
+    case 'select': e = mk('select', 'tsel');
+      e.addEventListener('change', () => run(() => e._n.set(e.value))); break;
+    case 'radio': e = mk('div', 'tradio'); e.setAttribute('role', 'radiogroup'); e._g = 'r' + (++radioId); break;
+    case 'checkbox': e = mk('label', 'tcheck');
+      { const i = mk('input'); i.type = 'checkbox'; e.append(i, mk('span'));
+        i.addEventListener('change', () => run(() => e._n.click())); } break;
+    case 'input': e = mk('input', 'tin'); e.type = 'text'; e.autocomplete = 'off';
+      e.addEventListener('input', () => { run(() => e._n.set(e.value)); }); break;
+    case 'link': e = mk('a', 'tlink'); e.href = '#';
+      e.addEventListener('click', ev => {
+        if (e._n.click) { ev.preventDefault(); run(() => e._n.click()); return; }
+        const tg = e._n.target;
+        if (/^https?:\/\//.test(tg)) { e.href = tg; e.target = '_blank'; e.rel = 'noopener'; return; }
+        ev.preventDefault();
+        const id = tg.replace(/\.tern$/, '');
+        if (!loadExample(id, true)) showRuntime(`No page called "${tg}" in the playground. Links to http(s) addresses open normally.`);
+      }); break;
+    case 'row': case 'column': e = mk('div', n.t === 'row' ? 'row' : 'col'); break;
+    case 'grid': e = mk('div', 'grid'); break;
+    case 'table': e = mk('div', 'tscroll'); break;
+    case 'divider': e = mk('hr', 'divider'); break;
+    case 'image': e = mk('img', 'timg'); e.addEventListener('error', () => e.classList.add('broken')); break;
+    default: e = mk('div');
+  }
+  e._t = n.t;
+  return e;
+}
+function update(e, n) {
+  e._n = n;
+  switch (n.t) {
+    case 'heading': case 'text': e.textContent = n.text; e.style.cssText = css(n.style, n.t); break;
+    case 'bullet': e.firstChild.textContent = n.text; e.style.cssText = css(n.style, 'bullet'); break;
+    case 'para':
+      e.replaceChildren(...n.spans.map(sp => { const s = mk('span', 'sp'); s.textContent = sp.text; s.style.cssText = css(sp.style, 'span'); return s; }));
+      e.style.cssText = css(n.style.align ? { align: n.style.align } : {}, 'para'); break;
+    case 'button': e.textContent = n.label; e.style.cssText = css(n.style, 'button'); e.disabled = !!(n.style && n.style.disabled); break;
+    case 'input': case 'textarea':
+      e.placeholder = n.placeholder; e.dataset.name = n.name || '';
+      if (e !== document.activeElement && e.value !== n.value) e.value = n.value;
+      e.disabled = !!(n.style && n.style.disabled); e.style.cssText = css(n.style || {}, n.t); break;
+    case 'slider':
+      e.min = n.lo; e.max = n.hi; e.value = n.value; e.disabled = !!(n.style && n.style.disabled);
+      e.style.cssText = css(n.style || {}, 'slider') + (n.style && n.style.color ? ';accent-color:' + n.style.color : ''); break;
+    case 'link': e.textContent = n.text; e.style.cssText = css(n.style, 'link'); break;
+    case 'select': {
+      const key = n.options.join('\u0001') + '|' + n.placeholder;
+      if (e._key !== key) {
+        e._key = key;
+        const ph = mk('option'); ph.value = ''; ph.textContent = n.placeholder; ph.disabled = true; ph.hidden = true;
+        e.replaceChildren(ph, ...n.options.map(o => { const op = mk('option'); op.value = o; op.textContent = o; return op; }));
+      }
+      e.value = n.options.includes(n.value) ? n.value : '';
+      e.disabled = !!(n.style && n.style.disabled); e.style.cssText = css(n.style || {}, 'select'); break;
+    }
+    case 'radio': {
+      const key = n.options.join('\u0001');
+      if (e._key !== key) {
+        e._key = key;
+        e.replaceChildren(...n.options.map(o => {
+          const l = mk('label', 'tcheck'), i = mk('input'); i.type = 'radio'; i.name = e._g; i.value = o;
+          i.addEventListener('change', () => run(() => e._n.set(o)));
+          const sp = mk('span'); sp.textContent = o; l.append(i, sp); return l;
+        }));
+      }
+      [...e.children].forEach(l => { l.firstChild.checked = l.firstChild.value === n.value; l.firstChild.disabled = !!(n.style && n.style.disabled); });
+      e.style.cssText = css(n.style || {}, 'cell'); break;
+    }
+    case 'checkbox': e.firstChild.disabled = !!(n.style && n.style.disabled); e.firstChild.checked = n.checked; e.lastChild.textContent = n.label; e.style.cssText = css(n.style, 'cell'); break;
+    case 'image': {
+      const src = assets[n.src] || (/^(https?:|data:)/.test(n.src) ? n.src : '');
+      if (e._src !== src) { e._src = src; e.classList.remove('broken'); if (src) e.src = src; else { e.removeAttribute('src'); e.classList.add('broken'); } }
+      e.alt = n.alt || (src ? '' : `image not found: ${n.src}`);
+      e.style.cssText = css(n.style, 'image'); break;
+    }
+    case 'row': case 'column': e.style.cssText = css(n.style, n.t); e.classList.toggle('aligned', !!n.style.align); patch(e, n.children); break;
+    case 'grid': e.style.cssText = css(n.style, 'grid') + `;grid-template-columns:repeat(${n.cols},minmax(0,1fr))`; patch(e, n.children); break;
+    case 'table': {
+      const st = n.style || {}, t = mk('table', 'tt');
+      t.style.cssText = css({ size: st.size, color: st.color, font: st.font, background: st.background }, 'table');
+      const line = st.border || '#d0d7de', pad = st.padding !== undefined ? st.padding + 'px' : '';
+      const fill = (tr, row, tag, ri) => {
+        row.cells.forEach((c, ci) => {
+          const cell = mk(tag);
+          cell.style.cssText = 'border-color:' + line + (pad ? ';padding:' + pad : '');
+          if (c.span > 1) cell.colSpan = c.span;
+          if (c.kind !== 'text' && c.style && c.style.background) cell.style.background = c.style.background;   // a button's colour fills its cell
+          if (c.kind === 'text') { cell.textContent = c.text; cell.style.cssText += ';' + css(c.style, 'cell'); }
+          else if (c.kind === 'select') {
+            const el = build({ t: 'select' }); update(el, { t: 'select', value: c.text, options: c.options, placeholder: c.placeholder, set: c.set });
+            el.dataset.cell = ri + ':' + ci; cell.appendChild(el);
+          }
+          else if (c.kind === 'input') {
+            const el = build({ t: 'input' }); update(el, { t: 'input', name: '', value: c.text, placeholder: c.placeholder, set: c.set });
+            el.dataset.cell = ri + ':' + ci; cell.appendChild(el);
+          } else {
+            const el = build({ t: c.kind }); update(el, c.kind === 'button'
+              ? { t: 'button', label: c.text, click: c.click, style: c.style }
+              : c.kind === 'checkbox'
+              ? { t: 'checkbox', label: c.text, checked: c.checked, click: c.click, style: c.style }
+              : { t: 'link', text: c.text, target: c.target, click: c.click, style: c.style });
+            cell.appendChild(el);
+          }
+          tr.appendChild(cell);
+        });
+      };
+      const widths = e._widths && n.resizable ? e._widths : null;
+      if (n.resizable && n.hrow) {   // a drag handle on the right edge of each header cell
+        let col = 0;
+        n.hrow.cells.forEach(c => { c._col = col + c.span - 1; col += c.span; });
+      }
+      if (n.hrow) { const tr = mk('tr'); fill(tr, n.hrow, 'th', 'h');
+        if (n.resizable) [...tr.children].forEach((th, i) => {
+          const g = mk('span', 'colgrip'); g.setAttribute('aria-hidden', 'true');
+          const col = n.hrow.cells[i]._col;
+          g.addEventListener('pointerdown', ev => {
+            ev.preventDefault(); g.setPointerCapture(ev.pointerId);
+            const ths = [...tr.children]; let c0 = 0;
+            if (!e._widths) {   // first drag: fix every column at its current width, then change only this one
+              e._widths = []; n.hrow.cells.forEach((c, k) => { for (let j = 0; j < c.span; j++) e._widths.push(ths[k].offsetWidth / c.span); });
+            }
+            const start = ev.clientX, w0 = e._widths[col];
+            const move = m => { e._widths[col] = Math.max(48, w0 + m.clientX - start); applyWidths(e); };
+            const up = () => { g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); g.removeEventListener('pointercancel', up); };
+            g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
+            applyWidths(e);
+          });
+          th.appendChild(g);
+        }); const th = mk('thead'); th.appendChild(tr); t.appendChild(th); }
+      const body = mk('tbody');
+      n.body.forEach((r, ri) => { const tr = mk('tr'); fill(tr, r, 'td', ri); body.appendChild(tr); });
+      // the table is rebuilt on every change, so keep the cursor in the text box being typed in
+      const act = document.activeElement, was = act && act.dataset && act.dataset.cell && e.contains(act) ? { k: act.dataset.cell, a: act.selectionStart, b: act.selectionEnd } : null;
+      t.appendChild(body); e.replaceChildren(t); if (widths) applyWidths(e);
+      if (was) { const el = t.querySelector('[data-cell="' + was.k + '"]'); if (el) { el.focus(); try { el.setSelectionRange(was.a, was.b); } catch (_) {} } }
+      e.style.cssText = css({ margin: st.margin, grow: st.grow, maxwidth: st.maxwidth, minwidth: st.minwidth }, 'cell') + (st.height ? ';max-height:' + st.height + 'px' : ''); break;
+    }
+  }
+}
+// fixed column widths chosen by dragging (a resizable table): a <colgroup> and table-layout: fixed
+function applyWidths(e) {
+  const t = e.firstChild; if (!t || !e._widths) return;
+  let cg = t.querySelector('colgroup');
+  if (!cg) { cg = mk('colgroup'); t.insertBefore(cg, t.firstChild); }
+  while (cg.children.length < e._widths.length) cg.appendChild(mk('col'));
+  e._widths.forEach((w, i) => { cg.children[i].style.width = w + 'px'; });
+  t.style.tableLayout = 'fixed'; t.style.width = e._widths.reduce((a, b) => a + b, 0) + 'px';
+}
+function patch(parent, nodes) {
+  nodes.forEach((n, i) => {
+    const old = parent.children[i];
+    if (old && old._t === n.t) update(old, n);
+    else { const e = build(n); update(e, n); old ? parent.replaceChild(e, old) : parent.appendChild(e); }
+  });
+  while (parent.children.length > nodes.length) parent.lastChild.remove();
+}
+function updateChrome() {
+  const slug = (page.title || 'page').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  $('addr').textContent = 'tern://' + slug + (page.screens.length > 1 ? '/' + page.screen : '');
+  $('back').disabled = page.history.length === 0;
+}
+function refresh() {
+  if (!page) return;
+  try { const nodes = page.render(); patch(pageEl, nodes.filter(n => n.t !== 'modal')); showModal(nodes.filter(n => n.t === 'modal').pop()); } catch (e) { if (e instanceof Tern.TernError) showRuntime(e.toString()); else throw e; }
+  if (page.screen !== lastScreen) { if (lastScreen !== null) paper.scrollTop = 0; lastScreen = page.screen; }
+  updateChrome(); persistSaved(); syncTimers();
+}
+// A modal is drawn over the page pane. The page behind it is made inert; Escape or a tap on the dim area closes it.
+const mlayer = $('mlayer'), mdlg = $('mdlg'); let mNode = null, mFrom = null;
+function showModal(n) {
+  mNode = n || null;
+  if (!n) {
+    if (!mlayer.hidden) { mlayer.hidden = true; paper.inert = false; mdlg.replaceChildren(); if (mFrom && mFrom.isConnected) mFrom.focus(); mFrom = null; }
+    return;
+  }
+  const opening = mlayer.hidden;
+  if (opening) { mFrom = document.activeElement; mlayer.hidden = false; paper.inert = true; }
+  mlayer.style.top = paper.offsetTop + 'px';
+  mdlg.style.cssText = css(n.style, 'modal');
+  patch(mdlg, n.children);
+  if (opening) (mdlg.querySelector('input, button, a[href]') || mdlg).focus();
+}
+mlayer.addEventListener('pointerdown', ev => { if (ev.target === mlayer && mNode) run(() => mNode.close()); });
+document.addEventListener('keydown', ev => {
+  if (!mNode) return;
+  if (ev.key === 'Escape') { ev.preventDefault(); run(() => mNode.close()); }
+  else if (ev.key === 'Tab') {   // keep Tab inside the dialog
+    const f = [...mdlg.querySelectorAll('input, button, a[href]')]; if (!f.length) { ev.preventDefault(); return; }
+    const first = f[0], last = f[f.length - 1];
+    if (ev.shiftKey && (document.activeElement === first || document.activeElement === mdlg)) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+  }
+});
+$('back').addEventListener('click', () => run(() => page.back()));
+function showRuntime(msg) { const r = $('rterr'); r.textContent = msg; r.hidden = false; }
+function run(fn) {
+  $('rterr').hidden = true;
+  try { fn(); } catch (e) { if (e instanceof Tern.TernError) showRuntime(e.toString()); else throw e; }
+  refresh();
+}
+
+// ---------------------------------------------------------------- phone-friendly typing aids
+function insert(text) {
+  ta.focus();
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  ta.setRangeText(text, s, e, 'end');
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+const chips = $('chips');
+for (const c of ['{', '}', '"', '->', '(', ')', '[', ']', ':', '=', ',', '#', '//', '  ']) {
+  const b = mk('button'); b.type = 'button'; b.textContent = c.trim() === '' ? 'tab' : c;
+  b.setAttribute('aria-label', 'Insert ' + (c.trim() === '' ? 'two spaces' : c));
+  b.addEventListener('pointerdown', ev => ev.preventDefault());
+  b.addEventListener('click', () => insert(c));
+  chips.appendChild(b);
+}
+const SNIPPETS = [
+  ['Image', 'image "mountains" width 240 alt "A picture"'],
+  ['Styled button', 'button "Go" style cta -> goto home'],
+  ['Another page', 'view about {\n  heading "About"\n  button "Back" -> back\n}', true],
+  ['Go to a page', 'button "About" -> goto about'],
+  ['Decimal state', 'state price: Float = 2.5', true],
+  ['Struct', 'struct Item {\n  name: Text\n  price: Int\n}\n', true],
+  ['Change a field', 'item.price = item.price + 1'],
+  ['Struct method', 'fn show(): Text {\n  return self.name\n}'],
+  ['Font text', 'text "Fancy" font display size 24'],
+  ['Heading', 'heading "Title"'],
+  ['Text', 'text "Some text"'],
+  ['Styled text', 'text "Important" bold color red size 18'],
+  ['Mixed paragraph', 'para {\n  span "Plain, "\n  span "bold" bold\n  span " and "\n  span "italic" italic\n}'],
+  ['Bullet', 'bullet "An item"'],
+  ['Button', 'button "Click" -> count = count + 1'],
+  ['Text box', 'input name placeholder "Type here"'],
+  ['Checkbox', 'checkbox agree "I agree"'],
+  ['Multi-line text', 'textarea notes placeholder "Notes" height 120'],
+  ['Slider', 'slider volume in 0 to 100'],
+  ['Dropdown', 'select choice in ["One", "Two", "Three"] placeholder "Pick one"'],
+  ['Radio buttons', 'radio choice in ["One", "Two", "Three"]'],
+  ['Modal', 'modal showDialog {\n  heading "Are you sure?"\n  button "OK" -> showDialog = false\n}'],
+  ['Table', 'table {\n  header "Name", "Qty"\n  cells "Tea", "2"\n  cells "Cake", "1"\n}'],
+  ['Row', 'row {\n  text "left"\n  text "right"\n}'],
+  ['Grid', 'grid 3 gap 10 {\n  text "one"\n  text "two"\n  text "three"\n}'],
+  ['Style', 'style note { italic color gray size 11 }', true],
+  ['State', 'state count: Int = 0', true],
+  ['Function', 'fn double(n: Int): Int {\n  return n * 2\n}', true],
+];
+const ins = mk('select'); ins.setAttribute('aria-label', 'Insert a block');
+ins.appendChild(Object.assign(mk('option'), { textContent: 'Insert...', value: '' }));
+SNIPPETS.forEach((s, i) => ins.appendChild(Object.assign(mk('option'), { textContent: s[0], value: String(i) })));
+function depthAt(pos) {
+  const pre = ta.value.slice(0, pos).replace(/"(?:[^"\\\n]|\\.)*"/g, '""').replace(/\/\/[^\n]*/g, '');
+  return (pre.match(/\{/g) || []).length - (pre.match(/\}/g) || []).length;
+}
+function insertBlock(snip, top) {
+  const here = ta.selectionStart, depth = depthAt(here);
+  if (!top && depth <= 0) {            // a page element outside any view: put it inside the last view
+    const idx = ta.value.lastIndexOf('}');
+    if (idx >= 0) {
+      const at = ta.value.lastIndexOf('\n', idx) + 1;
+      ta.setSelectionRange(at, at);
+      insert('  ' + snip.split('\n').join('\n  ') + '\n');
+      return;
+    }
+  }
+  if (top && depth > 0) {              // top-level things can go anywhere at the top; use the end of the file
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    insert((ta.value.endsWith('\n') ? '\n' : '\n\n') + snip + '\n');
+    return;
+  }
+  const s = ta.selectionStart, before = ta.value.slice(0, s);
+  const lineStart = before.lastIndexOf('\n') + 1, lead = (before.slice(lineStart).match(/^\s*/) || [''])[0];
+  const atBlank = before.slice(lineStart).trim() === '';
+  insert((atBlank ? '' : '\n' + lead) + snip.split('\n').map((l, i) => (i && lead ? lead + l : l)).join('\n') + '\n' + lead);
+}
+ins.addEventListener('change', () => {
+  if (ins.value === '') return;
+  const [, snip, top] = SNIPPETS[+ins.value]; ins.value = '';
+  insertBlock(snip, !!top);
+});
+chips.prepend(ins);
+const copyBtn = mk('button'); copyBtn.type = 'button'; copyBtn.textContent = 'Copy'; copyBtn.style.fontFamily = 'var(--sans)';
+copyBtn.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(ta.value); copyBtn.textContent = 'Copied'; }
+  catch (e) { ta.focus(); ta.select(); copyBtn.textContent = 'Selected'; }
+  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1400);
+});
+chips.appendChild(copyBtn);
+
+// auto-indent on Enter (beforeinput covers mobile keyboards), Tab on desktop
+ta.addEventListener('beforeinput', ev => {
+  if (ev.inputType !== 'insertLineBreak' && !(ev.inputType === 'insertText' && ev.data === '\n')) return;
+  ev.preventDefault();
+  const s = ta.selectionStart, before = ta.value.slice(0, s);
+  const line = before.slice(before.lastIndexOf('\n') + 1);
+  const lead = line.match(/^\s*/)[0] + (/\{\s*$/.test(line) ? '  ' : '');
+  insert('\n' + lead);
+});
+ta.addEventListener('keydown', ev => { if (ev.key === 'Tab' && !ev.shiftKey) { ev.preventDefault(); insert('  '); } });
+let timer = 0;
+ta.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(compile, 120); });
+
+// ---------------------------------------------------------------- images tab
+function saveMine() { try { localStorage.setItem('tern.assets', JSON.stringify(mine)); return true; } catch (e) { return false; } }
+function renderAssets() {
+  const list = $('imglist'); list.replaceChildren();
+  for (const name of assetNames()) {
+    const row = mk('div', 'asset');
+    const im = mk('img'); im.src = assets[name]; im.alt = '';
+    const box = mk('div'); const nm = mk('div', 'nm'); nm.textContent = name;
+    const acts = mk('div', 'acts');
+    const use = mk('button'); use.type = 'button'; use.textContent = 'Use in page';
+    use.addEventListener('click', () => { go('code'); ta.focus(); insertBlock(`image "${name}" width 240 alt ""`); });
+    acts.appendChild(use);
+    if (name in mine) {
+      const rm = mk('button'); rm.type = 'button'; rm.textContent = 'Remove';
+      rm.addEventListener('click', () => { delete mine[name]; delete assets[name]; saveMine(); renderAssets(); compile(); });
+      acts.appendChild(rm);
+    }
+    box.append(nm, acts); row.append(im, box); list.appendChild(row);
+  }
+  $('imgnote').textContent = 'Photos you add are shrunk to fit and kept on this device only. Web addresses (https://...) work only where the host allows them.';
+}
+function cleanName(file) {
+  let n = file.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'photo';
+  let k = n, i = 2; while (k in assets) k = n + '-' + i++;
+  return k;
+}
+$('addimg').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', async () => {
+  const f = $('file').files[0]; $('file').value = '';
+  if (!f) return;
+  try {
+    const bmp = await createImageBitmap(f);
+    const k = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+    const name = cleanName(f), uri = c.toDataURL('image/jpeg', 0.82);
+    mine[name] = uri; assets[name] = uri;
+    if (!saveMine()) $('imgnote').textContent = 'Added for this visit, but this browser would not keep it.';
+    renderAssets(); compile();
+  } catch (e) { $('imgnote').textContent = 'Could not read that file as an image.'; }
+});
+renderAssets();
+
+// ---------------------------------------------------------------- libraries tab
+function saveLibs() { try { localStorage.setItem('tern.libs', JSON.stringify(libs)); return true; } catch (e) { return false; } }
+function renderLibs() {
+  const list = $('liblist'); list.replaceChildren();
+  const names = Object.keys(libs);
+  $('libnote').textContent = names.length ? 'Libraries are kept on this device only. A library holds struct and fn, and cannot use state, views or other libraries.' : 'No libraries yet. Add one above, or pick the "Library (shop)" example.';
+  for (const name of names) {
+    const box = mk('div', 'lib');
+    const nm = mk('div', 'nm'); nm.textContent = name + '.ternlib';
+    const area = mk('textarea'); area.value = libs[name]; area.spellcheck = false; area.setAttribute('aria-label', name + '.ternlib source');
+    area.addEventListener('input', () => { libs[name] = area.value; saveLibs(); compile(); });
+    const acts = mk('div', 'acts');
+    const use = mk('button'); use.type = 'button'; use.textContent = 'Use in page';
+    use.addEventListener('click', () => { go('code'); ta.focus(); insertBlock(`use "${name}.ternlib"`, true); });
+    const rm = mk('button'); rm.type = 'button'; rm.textContent = 'Remove';
+    rm.addEventListener('click', () => { delete libs[name]; saveLibs(); renderLibs(); compile(); });
+    acts.append(use, rm); box.append(nm, area, acts); list.appendChild(box);
+  }
+}
+$('addlib').addEventListener('click', () => {
+  const n = $('newlibname').value.trim().replace(/\.ternlib$/, '');
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) { $('libnote').textContent = 'A library name uses letters, digits and _ only, like shop.'; return; }
+  if (n in libs) { $('libnote').textContent = n + ' already exists.'; return; }
+  libs[n] = 'fn double(n: Int): Int {\n  return n * 2\n}\n'; $('newlibname').value = '';
+  saveLibs(); renderLibs(); compile();
+});
+renderLibs();
+
+// ---------------------------------------------------------------- help
+$('help').innerHTML = `
+<h2>How a page is built</h2>
+<p>A page has <code>state</code> (what it remembers), <code>fn</code> (what it can do) and one <code>view</code> (what it shows). Tern checks types before anything runs.</p>
+<h2>Text style</h2>
+<p>Put these after the text, in any order:</p>
+<table>
+<tr><td><code>size 20</code></td><td>Size in points. Normal text is 12.</td></tr>
+<tr><td><code>bold</code> <code>italic</code> <code>underline</code> <code>strike</code></td><td>Switch on. Add <code>when cond</code> to make it conditional.</td></tr>
+<tr><td><code>color red</code></td><td>Text colour.</td></tr>
+<tr><td><code>background #fdecea</code></td><td>Highlight colour.</td></tr>
+<tr><td><code>align center</code></td><td><code>left</code>, <code>center</code> or <code>right</code>.</td></tr>
+</table>
+<pre>text "Sale!" size 24 bold color red
+text "Done" strike when finished</pre>
+<h2>Colours</h2>
+<p>By name, by hex like <code>#0b57d0</code> (or <code>#fff</code>), or with <code>rgb(r, g, b)</code> using 0 to 255.</p>
+<div id="swatches"></div>
+<h2>Named styles</h2>
+<p>Write a style once at the top, then reuse it. Later styles and direct settings win.</p>
+<pre>style warning { bold color red background #fdecea }
+
+text "Careful" style warning
+text "Careful, bigger" style warning size 20</pre>
+<h2>Mixed text in one sentence</h2>
+<pre>para {
+  span "Plain, "
+  span "bold" bold
+  span " and "
+  span "red" color red
+}</pre>
+<h2>Tables and lists</h2>
+<pre>table {
+  header "Item", "Price"
+  cells "Tea", "$3"
+  for i in range(len(names)) {
+    cells names[i], toText(prices[i])
+  }
+}
+bullet "A list item"</pre>
+<p>Every row needs the same number of cells. Cells are Text, so use <code>toText()</code> for numbers.</p>
+<p>A wide table scrolls sideways. For a long one, add <code>height</code> (points): <code>table height 240 { ... }</code>. The table then scrolls up and down in its own box and the header row stays in view.</p>
+<p>A cell can be a button or a link, and can span columns. Style words after a cell apply to that cell. The table itself takes <code>padding size color background border font</code>.</p>
+<pre>table height 200 padding 8 {
+  header "Pick", button "Sort by price" -> sorted = true, "Name"
+  cells button "[ ]" -> toggle(0), "$3" bold, "Tea"
+  cells "Total" span 2 background #eef, "$3"
+}</pre>
+<h2>Layout</h2>
+<pre>row {                      // side by side
+  button "A" -> n = 1
+  button "B" -> n = 2
+}
+column style card { ... }  // stacked, with a background
+row background gray padding 8 { ... }</pre>
+<h2>Spacing, alignment and grids</h2>
+<table>
+<tr><td><code>gap 16</code></td><td>Space between the items of a row, column or grid (default 8).</td></tr>
+<tr><td><code>margin 12</code></td><td>Space around any block.</td></tr>
+<tr><td><code>align spread</code></td><td>On a row: <code>left</code>, <code>center</code>, <code>right</code> or <code>spread</code> (items pushed to opposite ends). On a column it places each item inside it left, centre or right. To centre a narrow card on the page, wrap it in an outer <code>column align center</code>.</td></tr>
+<tr><td><code>grow 2</code></td><td>In a row, take 2 shares of the width that is left over.</td></tr>
+<tr><td><code>maxwidth 400</code> <code>minwidth 120</code></td><td>Limit how wide a block gets.</td></tr>
+<tr><td><code>grid 3 { ... }</code></td><td>Lay children out in 3 equal columns, wrapping to new lines.</td></tr>
+</table>
+<pre>row align spread { text "Shop"  text "Cart" }
+row gap 12 {
+  column grow 1 { text "Side" }
+  column grow 3 { text "Main" }
+}
+grid 3 gap 10 {
+  for i in range(6) { text "Card " + toText(i) }
+}</pre>
+<h2>Pages and buttons that move</h2>
+<p>Name each <code>view</code> to make several pages. The first is the start. Buttons and links can run <code>goto</code> and <code>back</code>.</p>
+<pre>view home {
+  button "Menu" -> goto menu
+}
+view menu {
+  text "Today: soup"
+  button "Back" -> back
+  link "Home" -> goto home
+}</pre>
+<p>Use <code>link "Site" to "https://..."</code> for outside web pages. Pages share the same state.</p>
+<h2>Images</h2>
+<p>Add photos in the Images tab (or use the samples), then: </p>
+<pre>image "mountains" width 280 radius 12 alt "Peaks"
+image "avatar" width 64 height 64 radius 999</pre>
+<p>Settings: <code>width height radius border align alt</code>. Tern checks that the image exists.</p>
+<h2>Fonts</h2>
+<p><code>text "Hi" font serif</code>. Choices: <code>sans serif mono display hand rounded</code>. <code>Font</code> is a type, so a state can hold one.</p>
+<h2>Styling buttons and boxes</h2>
+<pre>style cta { background blue color white bold radius 10 padding 12 }
+button "Buy" style cta width 220 -> goto cart
+row border gray radius 8 padding 10 { ... }</pre>
+<p>Buttons take <code>size bold italic color background font padding radius border width</code>. Rows and columns take <code>background padding radius border width</code>.</p>
+<h2>Text boxes on list items</h2>
+<p><code>input</code> can edit one item of a list, or a Text field inside a struct, and can be a table cell.</p>
+<pre>input names[i] placeholder "Name"
+input people[i].name
+table { for i in range(len(names)) { cells input names[i], toText(i) } }</pre>
+<p>The place has to start at a state, not a loop variable (a loop variable is only a copy of the item).</p>
+<h2>Modal dialog</h2>
+<p>A <code>modal</code> is drawn over the page, with the page dimmed and unclickable behind it. It shows while its <code>Bool</code> is true. Tapping the dim area or pressing Escape closes it: that sets a named state to false, or runs the action you give.</p>
+<pre>state confirm: Bool = false
+
+button "Delete" -> confirm = true
+modal confirm width 300 {
+  heading "Delete it?"
+  row {
+    button "Cancel" -> confirm = false
+    button "Delete" -> { items = removeAt(items, 0) confirm = false }
+  }
+}
+
+modal step > 0 -> step = 0 { ... }   // any condition, with its own close action</pre>
+<p>A modal goes directly in the view, not inside a row or column. It takes <code>width background padding radius border</code>. If two are open, the last one is shown.</p>
+<h2>Resizable columns</h2>
+<p>Add <code>resizable</code> after <code>table</code> and the reader can drag the right edge of a header cell to widen or narrow that column. The widths last until the page is reloaded.</p>
+<pre>table resizable height 240 { ... }</pre>
+<h2>Timers</h2>
+<p><code>every</code> runs an action again and again while it is on the page. The time is in milliseconds, and <code>when</code> turns it on and off.</p>
+<pre>state running: Bool = false
+state seconds: Int = 0
+
+button "Start" -> running = !running
+every 1000 when running -> seconds = seconds + 1</pre>
+<p>A timer never ticks faster than every 100 ms, a page can have at most 4 at once, it pauses while the browser tab is hidden, and it stops when you go to another <code>view</code>. If its action fails 3 times in a row, it stops.</p>
+<h2>Saved state</h2>
+<p>Put <code>saved</code> in front of a <code>state</code> and its value is kept between visits. Other states start fresh each time.</p>
+<pre>saved state name: Text = ""
+saved state todos: List&lt;Text&gt; = []
+state searching: Bool = false    // not kept</pre>
+<p>Any type works, including lists and structs. A kept value that no longer fits the state's type is ignored. Each page keeps up to 64 KB, on this device only, and only the page itself can read it. The <b>Clear saved</b> button in the page bar forgets it.</p>
+<h2>Multi-line text, slider and disabled</h2>
+<pre>state notes: Text = ""
+state volume: Int = 30
+state agreed: Bool = false
+
+textarea notes placeholder "Notes" height 120 width 300
+slider volume in 0 to 100 width 200
+text "Volume: " + toText(volume)
+
+button "Send" disabled when !agreed -> sent = true</pre>
+<p><code>textarea</code> is a multi-line text box on a <code>Text</code> state (or a place inside one); <code>height</code> sets how tall it is. <code>slider</code> edits an <code>Int</code> between two numbers; if the state is outside the range the slider shows the nearest end, and a range that ends before it starts is a runtime error. Add <code>disabled</code> (with <code>when</code> if you like) to a button, text box, textarea, slider, dropdown, radio or checkbox: it is greyed out and does nothing when used.</p>
+<h2>Dropdown and radio buttons</h2>
+<p><code>select</code> shows a dropdown and <code>radio</code> shows all the choices at once. Both pick from a list of <code>Text</code> options and store the choice in a <code>Text</code> state, or in a place inside one, like <code>input</code>.</p>
+<pre>state plan: Text = "Free"
+state country: Text = ""
+
+radio plan in ["Free", "Pro", "Team"]
+select country in ["France", "Japan", "Peru"] placeholder "Pick one"
+
+select people[i].role in roles          // inside a list
+table { for i in range(len(people)) { cells select people[i].role in roles, people[i].name } }</pre>
+<p>If the stored text is not one of the options, nothing is selected. A <code>select</code> takes <code>size color font width</code> and the spacing words; a <code>radio</code> takes <code>size color font margin</code>.</p>
+<h2>Checkbox</h2>
+<p>A checkbox shows a <code>Bool</code>. Name a Bool state and it flips that state. Or give it any Bool and an action, which is how you tick an item in a list.</p>
+<pre>state agree: Bool = false
+checkbox agree "I agree"
+
+checkbox picked[i] "Pick" -> picked = setAt(picked, i, !picked[i])</pre>
+<p>A checkbox can also be a table cell. It takes <code>size bold italic color font</code>.</p>
+<h2>Decimals</h2>
+<p><code>Float</code> is a separate type: <code>2.5</code>, <code>3.0</code>. Int and Float never mix on their own.</p>
+<pre>toFloat(3)            // Int to Float
+round(2.6)  floor()  ceil()   // Float to Int
+fixed(3.14159, 2)     // "3.14"
+toFloatOr(typed, 0.0) // text to Float
+toIntOr(typed, 0)     // text to Int
+sqrt(2.25)</pre>
+<h2>Structs</h2>
+<p>A <code>struct</code> groups typed fields into one value, and can have methods. Fields are always given by name.</p>
+<pre>struct Item {
+  name: Text
+  qty: Int
+  fn label(): Text {            // returns a value: read-only
+    return self.name + " x" + toText(self.qty)
+  }
+  fn take(n: Int) {             // returns nothing: may change self
+    if self.qty - n &gt; 0 { self.qty = self.qty - n }
+  }
+}
+state cart: List&lt;Item&gt; = [Item(name: "Tea", qty: 5)]
+text cart[0].label()
+button "Take" -> cart[0].take(2)
+cart[0].qty = 9                // change a field
+let more = cart[0] with qty: 7 // or make a changed copy</pre>
+<p>Structs are values: <code>let b = a</code> makes a copy, and changing <code>b</code> never changes <code>a</code>. A method that changes <code>self</code> returns nothing, and is called as its own statement on a variable (or a list item of one), not on a temporary or a loop variable. A struct cannot contain itself. Field names cannot be reserved words (so not <code>size</code> or <code>color</code>).</p>
+<h2>Libraries</h2>
+<p>Put shared logic in a library (Libraries tab), then use it from a page. A library holds only <code>struct</code> and <code>fn</code>: it cannot draw, hold state, change pages or use other libraries.</p>
+<pre>use "shop.ternlib"
+state cart: List&lt;shop.Item&gt; = []
+text toText(shop.total(cart))</pre>
+<p>Everything from a library is written with its name in front, so names never clash. Errors inside a library name its file.</p>
+<h2>Types</h2>
+<p><code>Int</code> <code>Float</code> <code>Text</code> <code>Bool</code> <code>Color</code> <code>Align</code> <code>Font</code> <code>List&lt;T&gt;</code> and your own structs. No automatic conversion: <code>"Age " + age</code> is an error, so write <code>toText(age)</code>.</p>
+<h2>Built-in functions</h2>
+<p><code>toText len append removeAt setAt slice sort sortOrder reverse range trim upper lower contains join rgb toFloat round floor ceil fixed sqrt toIntOr toFloatOr</code></p>
+<p><code>slice(xs, 2, 5)</code> is a new list from position 2 up to (not including) 5, and never fails if the range runs past the end. <code>sort(xs)</code> works on <code>Int</code>, <code>Float</code> or <code>Text</code> lists, smallest first. <code>sortOrder(xs)</code> gives the positions in sorted order, so you can sort one list by another: <code>for i in sortOrder(prices) { ... names[i] ... }</code>. <code>reverse(xs)</code> flips a list.</p>
+<h2>Reserved words</h2>
+<p><code>page state fn view style let if else for foreach in return true false null to placeholder text heading button input row column link divider para span table header cells bullet size color background align padding bold italic underline strike when image alt width height radius border font goto back struct with use self checkbox resizable modal gap margin grow maxwidth minwidth grid select radio textarea slider disabled saved every</code></p>`;
+const sw = $('swatches');
+for (const [name, hex] of Object.entries(Tern.COLORS)) {
+  const s = mk('span', 'sw'); const i = mk('i'); i.style.background = hex; s.append(i, name); sw.appendChild(s);
+}
+
+// ---------------------------------------------------------------- start
+const savedEx = store.get('tern.ex'), saved = store.get('tern.code');
+if (saved && savedEx && EXAMPLES.some(e => e.id === savedEx)) { curEx = savedEx; sel.value = savedEx; ta.value = saved; compile(); }
+else loadExample(curEx, true);
+})();
+</script>
+</body>
+</html>

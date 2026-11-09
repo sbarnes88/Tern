@@ -1,0 +1,45 @@
+page "Corner Cafe"
+
+style chip { background #eef3fc color blue radius 20 padding 8 border #c5d3f0 }
+style cta { background blue color white bold radius 10 padding 12 }
+
+state orders: Int = 0
+state names: List<Text> = ["Espresso", "Flat white", "Croissant"]
+state prices: List<Float> = [2.5, 3.2, 4.0]
+
+// Each "view name" is a page. Buttons and links move between them.
+view home {
+  image "mountains" width 320 radius 12 alt "Mountains at dawn"
+  heading "Corner Cafe" font display size 28
+  text "Small coffee shop. Slow mornings." font serif italic color gray
+  row {
+    button "Menu" style chip -> goto menu
+    button "About" style chip -> goto about
+  }
+  button "Order a coffee" style cta -> orders = orders + 1
+  text toText(orders) + " ordered today" color gray
+}
+
+view menu {
+  heading "Menu" font display
+  table {
+    header "Item", "Price"
+    for i in range(len(names)) {
+      cells names[i], "$" + fixed(prices[i], 2)
+    }
+  }
+  button "Back" -> back
+}
+
+view about {
+  heading "About us" font display
+  para {
+    span "We opened in "
+    span "2019" bold
+    span " and we are open every day."
+  }
+  row {
+    link "Home" -> goto home
+    link "Our website" to "https://example.com"
+  }
+}

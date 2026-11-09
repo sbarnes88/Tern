@@ -1,0 +1,24 @@
+// shop.ternlib: shared logic, no drawing, no state.
+struct Item {
+  name: Text
+  price: Int
+  qty: Int
+}
+
+fn make(name: Text, price: Int): Item {
+  return Item(name: name, price: price, qty: 1)
+}
+
+fn lineTotal(i: Item): Int {
+  return i.price * i.qty
+}
+
+fn total(items: List<Item>): Int {
+  let sum = 0
+  for i in items { sum = sum + lineTotal(i) }
+  return sum
+}
+
+fn money(n: Int): Text {
+  return "$" + toText(n)
+}

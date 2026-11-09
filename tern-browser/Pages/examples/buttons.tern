@@ -1,0 +1,22 @@
+page "Buttons"
+
+style primary { background blue color white bold radius 10 padding 12 }
+style ghost { color blue border blue radius 10 padding 10 background white }
+style danger { background red color white radius 6 padding 10 }
+style pill { background #e8f5e9 color green radius 999 padding 8 bold }
+
+state clicks: Int = 0
+state on: Bool = false
+
+view {
+  heading "Styled buttons"
+  button "Primary" style primary -> clicks = clicks + 1
+  button "Ghost" style ghost -> clicks = clicks + 1
+  button "Danger (resets)" style danger -> clicks = 0
+  button "Pill +5" style pill -> clicks = clicks + 5
+  button "Wide button" style primary width 280 -> clicks = clicks + 1
+  button "Serif italic" font serif italic size 16 -> clicks = clicks + 1
+  button "Toggle" style ghost bold when on -> on = !on
+  text "Clicks: " + toText(clicks) size 20 bold
+  text "Toggle is " + toText(on) color gray
+}

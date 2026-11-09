@@ -1,0 +1,17 @@
+page "Images"
+
+view {
+  heading "Images"
+  image "mountains" width 300 radius 12 alt "Mountains at dawn"
+  text "Rounded corners, 300 wide." color gray size 11
+  row {
+    image "avatar" width 64 height 64 radius 999 alt "A friendly face"
+    column {
+      text "Sam Rivera" bold
+      text "Photographer" italic color gray
+    }
+  }
+  image "sunset" width 300 border gray alt "Sunset over water"
+  image "logo" width 120 align center alt "Tern logo"
+  text "Put your own photos next to the page, and use their file names." italic color gray
+}

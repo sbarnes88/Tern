@@ -1,0 +1,17 @@
+page "Foreach loop"
+
+state fruits: List<Text> = ["Apple", "Banana", "Cherry", "Date"]
+state picked: Text = "none"
+
+view {
+  heading "Foreach loop"
+  text "A grid keeps the names and buttons in aligned columns (no table)."
+  grid 2 gap 8 {
+    foreach fruit in fruits {
+      text fruit
+      button "Pick" -> picked = fruit
+    }
+  }
+  divider
+  text "Picked: " + picked bold
+}

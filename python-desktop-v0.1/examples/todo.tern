@@ -1,0 +1,32 @@
+page "Todo list"
+
+state items: List<Text> = ["Try Tern", "Break something on purpose"]
+state draft: Text = ""
+
+fn add() {
+  if trim(draft) != "" {
+    items = append(items, trim(draft))
+    draft = ""
+  }
+}
+
+view {
+  heading "Todo list"
+  row {
+    input draft placeholder "What needs doing?"
+    button "Add" -> add()
+  }
+  if len(items) == 0 {
+    text "All done!"
+  } else {
+    text toText(len(items)) + " item(s)"
+  }
+  for i in range(len(items)) {
+    row {
+      text toText(i + 1) + ". " + items[i]
+      button "Done" -> items = removeAt(items, i)
+    }
+  }
+  divider
+  link "Back home" to "home.tern"
+}

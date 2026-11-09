@@ -1,0 +1,38 @@
+page "Style gallery"
+
+// Named styles: define once, use anywhere
+style title { size 28 bold color blue }
+style note { italic color gray size 11 }
+style warning { bold color red background #fdecea }
+
+state pts: Int = 16
+
+view {
+  heading "Style gallery" color purple
+  text "Big, bold and blue" style title
+  text "A quiet note in gray italics." style note
+  text "Careful: this is a warning." style warning
+  divider
+  para {
+    span "You can mix "
+    span "bold" bold
+    span ", "
+    span "italic" italic
+    span ", "
+    span "underlined" underline
+    span ", "
+    span "struck" strike
+    span " and "
+    span "coloured" color orange bold
+    span " words in one sentence."
+  }
+  divider
+  text "Resize me" size pts
+  row {
+    button "A-" -> pts = pts - 2
+    button "A+" -> pts = pts + 2
+  }
+  text "Size is " + toText(pts) + " points" style note
+  text "Centered" align center color rgb(130, 80, 223)
+  text "Right aligned" align right
+}
