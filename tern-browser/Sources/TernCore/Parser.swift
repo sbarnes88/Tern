@@ -348,6 +348,7 @@ struct Parser {
         case .kw where tok.val == "self": return Expr(.variable("self"), tok.pos)
         case .kw where tok.val == "true" || tok.val == "false": return Expr(.bool(tok.val == "true"), tok.pos)
         case .kw where tok.val == "null": return Expr(.null, tok.pos)
+        case .kw where tok.val == "action": return Expr(.action(try block()), tok.pos)
         case .op where tok.val == "[":
             var items: [Expr] = []
             while !isTok("]") { items.append(try expr()); if !accept(",") { break } }

@@ -18,6 +18,8 @@ public let KEYWORDS: Set<String> = [
     "select", "radio", "textarea", "slider", "disabled",
     // saved state
     "saved", "every",
+    // actions
+    "action",
 ]
 
 struct Token {

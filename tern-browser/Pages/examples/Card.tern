@@ -4,6 +4,8 @@
 // The host provides component sources when loading; components can also `use`
 // .ternlib files for shared helper functions.
 
+page "Card"
+
 struct CardProps {
   title: Text
   body: Text = ""
@@ -26,7 +28,6 @@ component Card(props: CardProps) {
 }
 
 // Preview (this file is also importable: `import component Card from "Card.tern"`)
-page "Card"
 view {
   heading "Card component"
   Card(title: "Hello", body: "A reusable, typed component.", badge: "demo")

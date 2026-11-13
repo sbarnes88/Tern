@@ -285,7 +285,7 @@ enum ExampleList {
         ("Style gallery", "styles.tern"), ("Price table", "table.tern"), ("Article page", "article.tern"),
         ("Multi-page site", "pages.tern"), ("Tip calculator", "tip.tern"), ("Fonts", "fonts.tern"),
         ("Images", "images.tern"), ("Styled buttons", "buttons.tern"), ("Quiz", "quiz.tern"),
-        ("Structs (cart)", "structs.tern"), ("Library (shop)", "library.tern"), ("Data table", "datatable.tern"), ("Editable list", "editable.tern"), ("Dialogs (modal)", "modal.tern"), ("Layout", "layout.tern"), ("Form (dropdown, radio)", "form.tern"), ("Feedback (textarea, slider)", "feedback.tern"), ("Stopwatch (timer, saved)", "stopwatch.tern"),
+        ("Structs (cart)", "structs.tern"), ("Library (shop)", "library.tern"), ("Components", "components.tern"), ("Card (component)", "Card.tern"), ("Data table", "datatable.tern"), ("Editable list", "editable.tern"), ("Dialogs (modal)", "modal.tern"), ("Layout", "layout.tern"), ("Form (dropdown, radio)", "form.tern"), ("Feedback (textarea, slider)", "feedback.tern"), ("Stopwatch (timer, saved)", "stopwatch.tern"),
         ("Broken on purpose", "broken.tern"),
     ]
 }

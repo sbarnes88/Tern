@@ -32,6 +32,7 @@ view {
     cells "Feedback", "Multi-line text, a slider and disabled buttons"
     cells "Stopwatch", "A timer, and laps that are saved between visits"
     cells "Structs and Library", "Your own types, and sharing code with use"
+    cells "Components", "Reusable, typed components with props and action callbacks"
     cells "Foreach loop", "Draw a list with foreach"
   }
   row {
@@ -58,6 +59,8 @@ view {
     link "Stopwatch" to "examples/stopwatch.tern"
     link "Structs" to "examples/structs.tern"
     link "Library" to "examples/library.tern"
+    link "Components" to "examples/components.tern"
+    link "Card (component)" to "examples/Card.tern"
     link "Foreach loop" to "examples/foreach.tern"
     link "Broken on purpose" to "examples/broken.tern"
   }

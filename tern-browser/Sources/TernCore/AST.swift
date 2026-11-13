@@ -14,6 +14,7 @@ public final class Expr {
         case field(Expr, String)
         case with(Expr, [(String, Expr, Pos)])
         case mcall(Expr, String, [Expr])     // receiver.method(args)
+        case action([Stmt])                   // action { ... } literal (closure)
     }
     let kind: Kind
     let pos: Pos
@@ -21,6 +22,7 @@ public final class Expr {
     var argType: TType? = nil   // set by the checker on toText(...)
     var method: String? = nil   // set by the checker on method calls: "Item.take"
     var writeBack = false       // set by the checker when a method call may change its receiver
+    var actionField = false     // set by the checker on mcall when invoking an Action-typed field
     init(_ kind: Kind, _ pos: Pos) { self.kind = kind; self.pos = pos }
 }
 

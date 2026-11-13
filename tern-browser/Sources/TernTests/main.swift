@@ -1138,5 +1138,77 @@ test("component import errors: wrong export") {
     throw Fail(description: "expected an error")
 }
 
+
+// ================= Action callbacks =================
+test("action callback prop: close a card") {
+    let p = try Page("""
+page "t"
+struct CardP { title: Text, onClose: Action }
+component Card(p: CardP) {
+  row { text p.title
+  button "X" -> p.onClose() }
+}
+state show: Bool = true
+view {
+  if show { Card(title: "Hi", onClose: action { show = false }) }
+  if !show { text "closed" }
+}
+""")
+    let before = renderText(try p.render()).joined(separator: "\n")
+    try check(before.contains("[ X ]"), before)
+    try click(p, "X")
+    try eq(renderText(try p.render()), ["closed"])
+}
+test("action callback: can mutate caller state") {
+    let p = try Page("""
+page "t"
+struct P { run: Action }
+component C(p: P) { button "go" -> p.run() }
+state n: Int = 0
+view {
+  C(run: action { n = n + 2 })
+  text toText(n)
+}
+""")
+    try click(p, "go")
+    try eq(renderText(try p.render()), ["[ go ]", "2"])
+}
+test("action callback: multiple cards with different actions") {
+    let p = try Page("""
+page "t"
+struct P { label: Text, onPick: Action }
+component Btn(p: P) { button p.label -> p.onPick() }
+state which: Text = ""
+view {
+  Btn(label: "A", onPick: action { which = "a" })
+  Btn(label: "B", onPick: action { which = "b" })
+  text which
+}
+""")
+    try click(p, "B")
+    try eq(renderText(try p.render()), ["[ A ]", "[ B ]", "b"])
+}
+test("action errors") {
+    _ = try expectErr("""
+page "t"
+struct P { onClose: Action }
+component C(p: P) { text "x" }
+view { C(onClose: 1) }
+""", "type error", "needs Action")
+    _ = try expectErr("""
+page "t"
+struct P { onClose: Action }
+state a: Action = action { }
+state b: Action = action { }
+view { if a == b { text "x" } }
+""", "type error", "cannot compare Action")
+    _ = try expectErr("""
+page "t"
+struct P { onClose: Action }
+component C(p: P) { button "x" -> p.onClose(1) }
+view { text "x" }
+""", "type error", "takes no arguments")
+}
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

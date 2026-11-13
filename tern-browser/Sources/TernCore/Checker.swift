@@ -341,7 +341,18 @@ final class Checker {
             guard let el = lt.element else { throw err("can only index a List, not \(lt)", e.pos) }
             try expectType(idx, .int, "a list index")
             return .optional(el)
+        case .action(let stmts):
+            let savedRet = ret; ret = .unit
+            try block(stmts)
+            ret = savedRet
+            return .action
         case .call(let name, let args):
+            if let ty = lookup(name), ty == .action {
+                let isStmt = stmtCall === e; stmtCall = nil
+                if args.count != 0 { throw err("an Action takes no arguments", e.pos) }
+                if !isStmt { throw err("an Action does something, so use it as its own statement, like: \(name)()", e.pos) }
+                return .unit
+            }
             return try call(e, name, args, expected)
         case .construct(let name, let fields):
             let st = structs[name]!
@@ -361,6 +372,12 @@ final class Checker {
             let isStmt = stmtCall === e; stmtCall = nil
             let t = try expr(recv)
             guard case .structType(let sn) = t, let st = structs[sn] else { throw err("only a struct has methods, but this is \(t)", e.pos) }
+            if let f = st.fields.first(where: { $0.name == name }), f.type == .action {
+                if args.count != 0 { throw err("an Action takes no arguments", e.pos) }
+                if !isStmt { throw err("an Action does something, so use it as its own statement, like: \(pathText(recv)).\(name)()", e.pos) }
+                e.actionField = true
+                return .unit
+            }
             guard let m = methods["\(sn).\(name)"] else {
                 let isField = st.fields.contains { $0.name == name }
                 let have = st.methods.map { $0.name }.joined(separator: ", ")
@@ -412,6 +429,7 @@ final class Checker {
         let rt2: TType
         if case .null = l.kind, rt.isOptional { lt2 = rt; rt2 = rt } else { lt2 = lt; rt2 = rt }
         if op == "==" || op == "!=" {
+            if lt2 == .action || rt2 == .action { throw err("cannot compare Action values", e.pos) }
             if lt2 != rt2 && !(typesCompatible(lt2, rt2) || typesCompatible(rt2, lt2)) {
                 throw err("cannot compare \(lt2) with \(rt2)", e.pos)
             }

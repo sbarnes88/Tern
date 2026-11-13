@@ -1,9 +1,10 @@
 // Components: reusable, typed view building blocks.
 // A component takes a props struct (with optional default values) and renders
 // view elements. Invoke it with named properties: Card(title: "Hi").
+// Props can include Action callbacks (e.g. an X button that closes the card).
 //
 // This example declares components inline so it runs everywhere today.
-// The same Card can live in its own file (see Card.tern) and be imported:
+// The same component can live in its own file (see Card.tern) and be imported:
 //   import component Card from "Card.tern"   // or: import component Card
 // (import resolution is host-provided; the engine/type-checker enforces it.)
 
@@ -30,6 +31,24 @@ component Card(props: CardProps) {
   }
 }
 
+struct NoticeProps {
+  title: Text
+  body: Text = ""
+  onClose: Action
+}
+
+component Notice(props: NoticeProps) {
+  column padding 12 gap 4 border #f59e0b background #fffbeb {
+    row {
+      text props.title bold color #92400e grow 1
+      button "X" -> props.onClose()
+    }
+    if props.body != "" {
+      text props.body color #92400e
+    }
+  }
+}
+
 struct StatProps {
   label: Text
   value: Text
@@ -42,11 +61,19 @@ component Stat(props: StatProps) {
   }
 }
 
-state features: List<Text> = ["Typed props", "Default values", "Reuse & loops"]
+state features: List<Text> = ["Typed props", "Default values", "Action callbacks", "Reuse & loops"]
+state showTip: Bool = true
 
 view {
   heading "Reusable components"
-  text "Strongly typed props (a struct) with defaults; general expressions." color #4b5563
+  text "Strongly typed props (a struct) with defaults and Action callbacks." color #4b5563
+
+  if showTip {
+    Notice(title: "Tip", body: "This card receives an onClose action from the page.", onClose: action { showTip = false })
+  }
+  if !showTip {
+    button "Show tip again" -> showTip = true
+  }
 
   Card(title: "Welcome", body: "Components are render-only view templates in v1.", badge: "new")
   Card(title: "Defaults", body: "accent and badge fall back to their defaults.")

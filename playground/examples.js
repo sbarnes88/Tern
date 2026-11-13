@@ -683,6 +683,97 @@ view {
 }
 ` },
 
+{ id: 'components', name: 'Components', src: `// Components: reusable, typed view building blocks.
+// A component takes a props struct (with optional default values) and renders
+// view elements. Invoke it with named properties: Card(title: "Hi").
+// Props can include Action callbacks (e.g. an X button that closes the card).
+
+page "Components"
+
+struct CardProps {
+  title: Text
+  body: Text = ""
+  accent: Color = #4f46e5
+  badge: Text = ""
+}
+
+component Card(props: CardProps) {
+  column padding 12 gap 4 border #d1d5db background #ffffff {
+    row gap 8 {
+      text props.title bold color props.accent
+      if props.badge != "" {
+        text props.badge size 12 color #ffffff background props.accent padding 4
+      }
+    }
+    if props.body != "" {
+      text props.body color #374151
+    }
+  }
+}
+
+struct NoticeProps {
+  title: Text
+  body: Text = ""
+  onClose: Action
+}
+
+component Notice(props: NoticeProps) {
+  column padding 12 gap 4 border #f59e0b background #fffbeb {
+    row {
+      text props.title bold color #92400e grow 1
+      button "X" -> props.onClose()
+    }
+    if props.body != "" {
+      text props.body color #92400e
+    }
+  }
+}
+
+struct StatProps {
+  label: Text
+  value: Text
+}
+
+component Stat(props: StatProps) {
+  column padding 8 gap 2 border #e5e7eb {
+    text props.label size 12 color #6b7280
+    text props.value size 22 bold
+  }
+}
+
+state features: List<Text> = ["Typed props", "Default values", "Action callbacks", "Reuse & loops"]
+state showTip: Bool = true
+
+view {
+  heading "Reusable components"
+  text "Strongly typed props (a struct) with defaults and Action callbacks." color #4b5563
+
+  if showTip {
+    Notice(title: "Tip", body: "This card receives an onClose action from the page.", onClose: action { showTip = false })
+  }
+  if !showTip {
+    button "Show tip again" -> showTip = true
+  }
+
+  Card(title: "Welcome", body: "Components are render-only view templates in v1.", badge: "new")
+  Card(title: "Defaults", body: "accent and badge fall back to their defaults.")
+
+  heading "In a loop"
+  row gap 8 {
+    for f in features {
+      Stat(label: "Feature", value: f)
+    }
+  }
+
+  heading "Composed"
+  row gap 8 {
+    Card(title: "Fast", accent: #059669)
+    Card(title: "Typed", accent: #2563eb)
+    Card(title: "Secure", accent: #dc2626)
+  }
+}
+` },
+
 { id: 'stopwatch', name: 'Stopwatch (every, saved)', src: `page "Stopwatch"
 
 // every runs an action on a timer while its condition holds (here: while running).

@@ -21,6 +21,7 @@ public indirect enum TType: Equatable, CustomStringConvertible {
     case list(TType)
     case structType(String)
     case optional(TType)
+    case action
 
     public var description: String {
         switch self {
@@ -35,6 +36,7 @@ public indirect enum TType: Equatable, CustomStringConvertible {
         case .list(let t): return "List<\(t)>"
         case .structType(let n): return n
         case .optional(let t): return "\(t)?"
+        case .action: return "Action"
         }
     }
     public var isList: Bool { if case .list = self { return true }; return false }
@@ -44,7 +46,7 @@ public indirect enum TType: Equatable, CustomStringConvertible {
 }
 
 let BASE_TYPES: [String: TType] = [
-    "Int": .int, "Float": .float, "Text": .text, "Bool": .bool, "Color": .color, "Align": .align, "Font": .font,
+    "Int": .int, "Float": .float, "Text": .text, "Bool": .bool, "Color": .color, "Align": .align, "Font": .font, "Action": .action,
 ]
 
 /// Named colours, in the order the guide lists them.

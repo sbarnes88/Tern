@@ -24,6 +24,7 @@ os.makedirs(IMG, exist_ok=True)
 # ---------------------------------------------------------------- samples
 S = {}
 LIBS_BY_SRC = {}   # page source -> {library name: library source}, for pages that use `use`
+COMPS_BY_SRC = {}  # page source -> {component file/name: source}, for pages that `import component`
 
 S["hello"] = '''page "Hello"
 
@@ -536,6 +537,7 @@ S["struct_basic"] = """page "Profile"
 struct Person {
   name: Text
   age: Int
+  title: Text = "Friend"   // a field with a default value
 
   fn greeting(): Text {
     return "Hello, " + self.name
@@ -546,7 +548,7 @@ struct Person {
   }
 }
 
-state me: Person = Person(name: "Ada", age: 36)
+state me: Person = Person(name: "Ada", age: 36)   // title uses its default
 
 view {
   heading me.greeting()
@@ -554,6 +556,87 @@ view {
   button "Birthday" -> me.birthday()
 }
 """
+
+S["components"] = """page "Components"
+
+struct CardProps {
+  title: Text
+  body: Text = ""
+  accent: Color = blue
+  badge: Text = ""
+}
+
+component Card(props: CardProps) {
+  column padding 12 gap 4 border gray background white {
+    row gap 8 {
+      text props.title bold color props.accent
+      if props.badge != "" {
+        text props.badge size 12 color white background props.accent padding 4
+      }
+    }
+    if props.body != "" {
+      text props.body
+    }
+  }
+}
+
+struct NoticeProps {
+  title: Text
+  body: Text = ""
+  onClose: Action
+}
+
+component Notice(props: NoticeProps) {
+  column padding 12 gap 4 border orange background #fffbeb {
+    row {
+      text props.title bold color #92400e grow 1
+      button "X" -> props.onClose()
+    }
+    if props.body != "" {
+      text props.body color #92400e
+    }
+  }
+}
+
+state showTip: Bool = true
+
+view {
+  heading "Reusable components"
+  if showTip {
+    Notice(title: "Tip", body: "This card receives an onClose action from the page.",
+           onClose: action { showTip = false })
+  }
+  if !showTip {
+    button "Show tip again" -> showTip = true
+  }
+  Card(title: "Welcome", body: "Typed props with defaults.", badge: "new")
+  Card(title: "Defaults", body: "accent and badge fall back to their defaults.")
+}
+"""
+
+S["comp_file"] = """// Card.tern: a reusable component file
+struct CardProps {
+  title: Text
+  body: Text = ""
+}
+
+component Card(props: CardProps) {
+  column padding 12 border gray {
+    text props.title bold
+    if props.body != "" { text props.body }
+  }
+}
+"""
+
+S["comp_page"] = """page "Use Card"
+
+import component Card from "Card.tern"   // or: import component Card
+
+view {
+  Card(title: "Hello", body: "Imported from Card.tern")
+}
+"""
+COMPS_BY_SRC[S["comp_page"]] = {"Card.tern": S["comp_file"]}
 
 S["struct_cart"] = """page "Cart"
 
@@ -727,9 +810,13 @@ def libs_for(src):
     """Libraries (name -> source) that a sample page uses, registered in LIBS_BY_SRC."""
     return LIBS_BY_SRC.get(src, {})
 
+def comps_for(src):
+    """Component sources (file/name -> source) that a sample page imports, registered in COMPS_BY_SRC."""
+    return COMPS_BY_SRC.get(src, {})
+
 
 def node_check(src):
-    env = dict(os.environ, TERN_LIBS=json.dumps(libs_for(src)))
+    env = dict(os.environ, TERN_LIBS=json.dumps(libs_for(src)), TERN_COMPS=json.dumps(comps_for(src)))
     out = subprocess.run(["node", os.path.join(OUT, "check.js")], input=src, capture_output=True,
                          text=True, check=True, env=env).stdout
     return json.loads(out)
@@ -738,6 +825,7 @@ def node_check(src):
 def _open(src, width=390):
     ctx = _browser.new_context(viewport={"width": width, "height": 1500}, device_scale_factor=2)
     ctx.add_init_script("localStorage.setItem('tern.libs', %s)" % json.dumps(json.dumps(libs_for(src))))
+    ctx.add_init_script("localStorage.setItem('tern.components', %s)" % json.dumps(json.dumps(comps_for(src))))
     pg = ctx.new_page()
     pg.route("**/fonts.googleapis.com/**", lambda r: r.abort())
     pg.goto(INDEX)
@@ -812,6 +900,7 @@ def shot(name, actions=(), key=None, width=390):
 def app_shot(name, src, tab, width=390, height=720):
     ctx = _browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=2)
     ctx.add_init_script("localStorage.setItem('tern.libs', %s)" % json.dumps(json.dumps(libs_for(src))))
+    ctx.add_init_script("localStorage.setItem('tern.components', %s)" % json.dumps(json.dumps(comps_for(src))))
     pg = ctx.new_page()
     pg.route("**/fonts.googleapis.com/**", lambda r: r.abort())
     pg.goto(INDEX)
@@ -1078,7 +1167,7 @@ def cover(canv, doc):
     canv.drawString(0.9 * inch, h - 5.4 * inch, "A beginner's guide, with exercises and a complete project")
     canv.setFillColor(MUTED)
     canv.setFont("Helvetica", 10)
-    canv.drawString(0.9 * inch, 0.9 * inch, "Covers Tern 0.3, with structs and libraries. Every example in this guide was run through the real Tern checker.")
+    canv.drawString(0.9 * inch, 0.9 * inch, "Covers Tern 0.4, with structs, libraries, components, and action callbacks. Every example in this guide was run through the real Tern checker.")
     canv.restoreState()
 
 
@@ -1576,7 +1665,8 @@ story += [CondPageBreak(4 * inch), H1("17. Structs: your own types"),
           img(sb1, "After tapping Birthday once", w=2.9 * inch),
           *table(["To", "Write"],
                  [["declare a struct (at the top, outside `view`)", "`struct Person { name: Text  age: Int }`, one field per line"],
-                  ["make one", "`Person(name: \"Ada\", age: 36)`. Every field, by name"],
+                  ["give a field a default", "`title: Text = \"Friend\"`. The value is a general expression"],
+                  ["make one", "`Person(name: \"Ada\", age: 36)`. Every field by name; fields with defaults may be omitted"],
                   ["read a field", "`me.name`   `cart[0].price`"],
                   ["change a field", "`me.age = 37`   `cart[0].qty = cart[0].qty + 1`"],
                   ["make a changed copy", "`me with age: 37`, or several: `me with name: \"Grace\", age: 40`"],
@@ -1603,8 +1693,8 @@ story += [CondPageBreak(4 * inch), H1("17. Structs: your own types"),
           code(S["struct_cart"], "struct_cart.tern"),
           img(sc1, "After tapping More tea", w=2.9 * inch),
           H2("Named fields keep you safe"),
-          P("You must give every field, by name, so a missing or misspelled field is caught before the page runs. "
-            "Giving values by position, as in `Item(\"Tea\", 3)`, is not allowed."),
+          P("You must give every field by name, so a missing or misspelled field is caught before the page runs. "
+            "A field that has a default value may be left out. Giving values by position, as in `Item(\"Tea\", 3)`, is not allowed."),
           code(BAD["e_struct"][0], "A missing field"),
           img(es_path, f"Tern says: {es_err.msg}", w=2.9 * inch),
           P("Position-only values get a clear message too: **" + str(ep_err) + "**"),
@@ -1617,12 +1707,49 @@ story += [CondPageBreak(4 * inch), H1("17. Structs: your own types"),
                           "with `setAt`."),
           CondPageBreak(3.6 * inch)]
 
-# ---- 18 libraries
+# ---- 18 components
+story += [CondPageBreak(4 * inch), H1("18. Components: reusable building blocks"),
+          P("As pages grow you repeat the same groups of view elements. A **component** is a reusable, typed view "
+            "template: it takes a **props struct** and renders view elements. Components are flexible like HTML "
+            "building blocks, but strongly typed and checked before the page runs."),
+          code(S["components"], "components.tern"),
+          H2("Declaring and using a component"),
+          bullets(["Declare a props struct and a component at the top level: "
+                   "`struct CardProps { title: Text  body: Text = \"\" }` then "
+                   "`component Card(props: CardProps) { ... }`. The body is a view block.",
+                   "Props fields can have **default values** (general expressions). A field with a default may be omitted when you use the component.",
+                   "Use a component by name with **named properties**: `Card(title: \"Hi\", body: \"...\")`. "
+                   "Unknown, duplicate, missing-required, or wrongly-typed properties are type errors.",
+                   "Components are render-only view templates (v1): they draw; they do not keep their own `state`."]),
+          H2("Action callbacks (e.g. a close button)"),
+          P("A prop can be an **Action** — a typed callback the component can invoke. The page passes an inline "
+            "action literal that captures its scope: `onClose: action { show = false }`. Inside the component, "
+            "a button runs it: `button \"X\" -> props.onClose()`. The component can only invoke the action it was "
+            "given; the action runs with the caller’s state, so the page stays in control."),
+          *table(["Write", "Meaning"],
+                 [["`onClose: Action`", "a struct field / prop that holds a callback (no arguments, no return value)"],
+                  ["`action { show = false }`", "an inline action value; type-checked in the caller’s scope and captured there"],
+                  ["`props.onClose()`", "invoke the callback (as its own statement / button action)"]], [2.6, 4.1]),
+          P("`Action` values are not data you can compare or save; they are passed-in behaviour."),
+          H2("Importing a component from a file"),
+          P("A component lives in a `.tern` file (not a `.ternlib`). Put the props struct and `component` in a file, "
+            "then import it into a page:"),
+          code(S["comp_file"], "Card.tern"),
+          code(S["comp_page"], "shop page using Card"),
+          *table(["Write", "Meaning"],
+                 [["`import component Card from \"Card.tern\"`", "import the named component from a file"],
+                  ["`import component Card`", "shorthand; resolves `Card.tern`"],
+                  ["`use \"shop.ternlib\"` in a component file", "a component can use library helpers for its logic"]], [3.0, 3.7]),
+          P("Component files may define `struct`, `fn`, and `component`, and may `use` `.ternlib` helpers. "
+            "Import resolution and sibling component/library loading are provided by the host (the browser/playground)."),
+          CondPageBreak(3.6 * inch)]
+
+# ---- 19 libraries
 lp1, _ = shot("lib_page_after", [("click", "Add tea")], key="lib_page")
 lt = app_shot("libs_tab", S["lib_page"], "libs", height=720)
 le_path, le_err = err_shot("e_lib")
 lf_path, lf_err = err_shot("e_libfile")
-story += [CondPageBreak(4 * inch), H1("18. Libraries: sharing logic"),
+story += [CondPageBreak(4 * inch), H1("19. Libraries: sharing logic"),
           P("As pages grow, the rules (how a total is worked out, how money is shown) get mixed up with the layout, "
             "and a second page needs the same rules again. A **library** is a separate file that holds only "
             "the rules. It ends in `.ternlib`."),
@@ -1662,8 +1789,8 @@ story += [CondPageBreak(4 * inch), H1("18. Libraries: sharing logic"),
                          "libraries yet."),
           CondPageBreak(3.6 * inch)]
 
-# ---- 19 errors
-story += [CondPageBreak(4 * inch), H1("19. Reading error messages"),
+# ---- 20 errors
+story += [CondPageBreak(4 * inch), H1("20. Reading error messages"),
           P("Tern reports three kinds of problem. Every message gives a line and column, and the Page tab "
             "also shows the line of code. Read the message literally; it usually tells you the fix."),
           H2("Type errors: caught before the page runs")]
@@ -1687,7 +1814,7 @@ story += [KeepTogether(flat([code(RUNTIME["e_div"], "Dividing by zero"),
                           "dividing by zero, indexing outside a list, and recursing too deeply.")])),
           CondPageBreak(3.6 * inch)]
 
-# ---- 10 quiz
+# ---- 21 quiz
 def quiz_row():
     cells = []
     for key, acts, caption in [
@@ -1706,7 +1833,7 @@ def quiz_row():
     return KeepTogether([t])
 
 
-story += [H1("20. Project: a quiz"),
+story += [H1("21. Project: a quiz"),
           P("Time to combine everything. This page asks questions one at a time, checks answers, keeps score, "
             "and offers a replay. It uses state, two functions, `input`, `button`, `if`/`else` in the view, "
             "lists, indexing, and text built from pieces."),
@@ -1723,14 +1850,14 @@ story += [H1("20. Project: a quiz"),
           bullets(["Add more questions, remembering to add an answer for each.",
                    "Show the running score while playing.",
                    "Add a `link` to a second quiz page on another topic."]),
-          H2("What Tern 0.3 does not have (yet)"),
-          P("User-defined record types, saving data between visits, animation, and pages that fetch data "
+          H2("What Tern does not have yet"),
+          P("Component slots/children and parameterized action callbacks, component-local state, animation, and pages that fetch data "
             "from the network. Pages cannot read files or reach the internet, which keeps them safe to open, "
             "but it also means this is a learning language, not yet a replacement for a full web stack."),
           CondPageBreak(3.6 * inch)]
 
-# ---- 11 exercises
-story += [PageBreak(), H1("21. Exercises"),
+# ---- 22 exercises
+story += [PageBreak(), H1("22. Exercises"),
           P("Try each one before reading the solutions on the next pages. The status line under your code "
             "tells you straight away whether the page type-checks."),
           H2("1. Full name"),
@@ -1783,8 +1910,8 @@ story += [PageBreak(), H1("Appendix A: Quick reference"),
           P("`page  state  fn  view  let  if  else  for  foreach  in  return  true  false  to  placeholder  "
             "text  heading  button  input  row  column  link  divider  style  size  color  background  align  "
             "padding  bold  italic  underline  strike  when  para  span  table  header  cells  bullet  image  alt  width  "
-            "height  radius  border  font  goto  back  struct  with  use  self  checkbox  resizable  modal  gap  margin  grow  maxwidth  minwidth  grid  select  radio  textarea  slider  disabled  saved  every`. "
-            "You cannot use these as names. Type names (`Int`, `Text`, `Bool`, `List`) start with a capital letter. The built-in colour and alignment names (`black white gray red green blue orange purple yellow pink`, `left center right`, `sans serif mono display hand rounded`) can be used but not changed."),
+            "height  radius  border  font  goto  back  struct  with  use  self  checkbox  resizable  modal  gap  margin  grow  maxwidth  minwidth  grid  select  radio  textarea  slider  disabled  saved  every  component  import  action`. "
+            "You cannot use these as names. Type names (`Int`, `Text`, `Bool`, `List`, `Action`, `Float`, `Color`, `Align`, `Font`) start with a capital letter. The built-in colour and alignment names (`black white gray red green blue orange purple yellow pink`, `left center right`, `sans serif mono display hand rounded`) can be used but not changed."),
           H2("Built-in functions"),
           *table(["Function", "Type", "What it does"],
                  [["`toText(x)`", "Int, Bool or Text -> Text", "Convert to text"],
@@ -1811,7 +1938,8 @@ story += [PageBreak(), H1("Appendix A: Quick reference"),
           H2("Structs and libraries"),
           *table(["Write", "Meaning"],
                  [["`struct Item { name: Text  price: Int }`", "declare a struct, one field per line"],
-                  ["`Item(name: \"Tea\", price: 3)`", "make one: every field, by name"],
+                  ["`body: Text = \"\"`", "a field with a default value (an expression); may be omitted when making the struct"],
+                  ["`Item(name: \"Tea\", price: 3)`", "make one: every field by name (omit those with defaults)"],
                   ["`item.name`", "read a field"],
                   ["`item.price = 4`", "change a field (on a variable or a list item of one)"],
                   ["`item with price: 4`", "a changed copy; several fields with commas"],
@@ -1819,6 +1947,14 @@ story += [PageBreak(), H1("Appendix A: Quick reference"),
                   ["`item.more()`   `cart[0].more()`", "call a method with a dot"],
                   ["`use \"shop.ternlib\"`", "load a library (`struct` and `fn` only)"],
                   ["`shop.total(xs)`   `shop.Item`", "a library's function or struct, always with its name in front"]], [3.0, 3.7]),
+          H2("Components and actions"),
+          *table(["Write", "Meaning"],
+                 [["`component Card(p: CardProps) { ... }`", "declare a reusable view component that takes a props struct"],
+                  ["`Card(title: \"Hi\", body: \"...\")`", "use it with named properties (defaults may be omitted)"],
+                  ["`import component Card from \"Card.tern\"`", "import a component from a `.tern` file (`import component Card` is shorthand)"],
+                  ["`onClose: Action`", "a prop/field that holds a callback (no args, no return value)"],
+                  ["`action { show = false }`", "an inline action value, captured in the caller’s scope"],
+                  ["`button \"X\" -> props.onClose()`", "invoke an action callback"]], [3.0, 3.7]),
           H2("Style properties"),
           *table(["Property", "Value", "Works on"],
                  [["`size 20`", "Int, points (6 to 96)", "text, heading, bullet, para, span, link, button"],
@@ -1860,7 +1996,10 @@ story += [PageBreak(), H1("Appendix A: Quick reference"),
                   ["`for i in cart { i.more() }`", "`i` is a copy, so the change is lost. Write `cart[0].more()`"],
                   ["a method that returns a value and sets `self.x`", "Split it: one method changes, another returns"],
                   ["`struct Box { size: Int }`", "`size` is a reserved word; try `boxSize`"],
-                  ["`total(cart)` for a library function", "Write the library name first: `shop.total(cart)`"]], [3.0, 3.7])]
+                  ["`total(cart)` for a library function", "Write the library name first: `shop.total(cart)`"],
+                  ["`Card(title: 5)` or `Card(nope: \"x\")`", "Props are typed and named: pass the right type, and only declared properties"],
+                  ["`onClose: 1` for an `Action` prop", "Pass an action value: `onClose: action { ... }`"],
+                  ["`if a == b` where `a`, `b` are `Action`", "Actions can’t be compared; invoke them instead"]], [3.0, 3.7])]
 
 doc.multiBuild(flat(story))
 print("built", os.path.join(OUT, "Learn_Tern.pdf"))

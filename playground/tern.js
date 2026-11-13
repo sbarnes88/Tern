@@ -12,8 +12,8 @@ class TernError extends Error {
 }
 
 // ---------------------------------------------------------------- types
-const INT = 'Int', TEXT = 'Text', BOOL = 'Bool', UNIT = 'Unit', COLOR = 'Color', ALIGN = 'Align', FLOAT = 'Float', FONT = 'Font';
-const BASE_TYPES = { Int: INT, Float: FLOAT, Text: TEXT, Bool: BOOL, Color: COLOR, Align: ALIGN, Font: FONT };
+const INT = 'Int', TEXT = 'Text', BOOL = 'Bool', UNIT = 'Unit', COLOR = 'Color', ALIGN = 'Align', FLOAT = 'Float', FONT = 'Font', ACTION = 'Action';
+const BASE_TYPES = { Int: INT, Float: FLOAT, Text: TEXT, Bool: BOOL, Color: COLOR, Align: ALIGN, Font: FONT, Action: ACTION };
 const isList = t => Array.isArray(t);
 const tname = t => (isList(t) ? `List<${tname(t[1])}>` : t);
 const teq = (a, b) => (isList(a) ? isList(b) && teq(a[1], b[1]) : a === b);
@@ -49,6 +49,7 @@ const KEYWORDS = new Set([
   'saved', 'every',
   'struct', 'with', 'use', 'self',
   'component', 'import',
+  'action',
 ]);
 const TOKEN_RE = new RegExp(
   '(?<ws>[ \\t\\r]+)|(?<nl>\\n)|(?<comment>//[^\\n]*)|' +
@@ -402,6 +403,7 @@ class Parser {
     if (t.kind === 'id') return N('var', t.pos, { name: t.val });
     if (t.kind === 'kw' && t.val === 'self') return N('var', t.pos, { name: 'self' });
     if (t.kind === 'kw' && (t.val === 'true' || t.val === 'false')) return N('bool', t.pos, { v: t.val === 'true' });
+    if (t.kind === 'kw' && t.val === 'action') return N('action', t.pos, { body: this.block() });
     if (t.kind === 'op' && t.val === '[') {
       const items = [];
       while (!this.is(']')) { items.push(this.expr()); if (!this.accept(',')) break; }
@@ -942,7 +944,22 @@ class Checker {
         this.expectType(e.idx, INT, 'a list index');
         return lt[1];
       }
-      case 'call': return this.call(e, expected);
+      case 'action': {
+        const saved = this.ret; this.ret = UNIT;
+        this.block(e.body);
+        this.ret = saved;
+        return ACTION;
+      }
+      case 'call': {
+        const ty = this.lookup(e.name);
+        if (ty === ACTION && !(e.name in this.fns) && !(e.name in BUILTINS)) {
+          const isStmt = this.stmtCall === e; this.stmtCall = null;
+          if (e.args.length) this.err('an Action takes no arguments', e);
+          if (!isStmt) this.err(`an Action does something, so use it as its own statement, like: ${e.name}()`, e);
+          return UNIT;
+        }
+        return this.call(e, expected);
+      }
       case 'construct': {
         const st = this.structs[e.name], given = new Set();
         for (const [fname, val, fpos] of e.fields) {
@@ -960,6 +977,13 @@ class Checker {
         const isStmt = this.stmtCall === e; this.stmtCall = null;
         const t = this.expr(e.recv);
         if (typeof t !== 'string' || !(t in this.structs)) this.err(`only a struct has methods, but this is ${tname(t)}`, e);
+        const af = this.structs[t].fields.find(f => f[0] === e.name);
+        if (af && af[1] === ACTION) {
+          if (e.args.length) this.err('an Action takes no arguments', e);
+          if (!isStmt) this.err(`an Action does something, so use it as its own statement, like: ${this.pathText(e.recv)}.${e.name}()`, e);
+          e.actionField = true;
+          return UNIT;
+        }
         const m = this.methods[`${t}.${e.name}`];
         if (!m) {
           const have = this.structs[t].methods.map(x => x.name);
@@ -1006,6 +1030,7 @@ class Checker {
     }
     const lt = this.expr(e.l), rt = this.expr(e.r);
     if (op === '==' || op === '!=') {
+      if (lt === ACTION || rt === ACTION) this.err('cannot compare Action values', e);
       if (!teq(lt, rt)) this.err(`cannot compare ${tname(lt)} with ${tname(rt)}`, e);
       return BOOL;
     }
@@ -1271,6 +1296,7 @@ class Page {
     if (ty === COLOR) return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
     if (ty === ALIGN) return typeof v === 'string' && Object.prototype.hasOwnProperty.call(ALIGNS, v);
     if (ty === FONT) return typeof v === 'string' && FONTS.includes(v);
+    if (ty === ACTION) return false;
     if (isList(ty)) return Array.isArray(v) && v.length <= 1000000 && v.every(x => this.fits(x, ty[1]));
     const st = this.structs[ty];
     if (!st || v === null || typeof v !== 'object' || Array.isArray(v)) return false;
@@ -1382,8 +1408,22 @@ class Page {
         return lst[i];
       }
       case 'bin': return this.binop(e, scopes);
-      case 'call': return this.call(e, scopes);
+      case 'action':
+        return { __action: { stmts: e.body, scopes: scopes.map(s => ({ ...s })) } };
+      case 'call': {
+        if (!(e.name in this.fns) && !(e.name in BUILTINS)) {
+          const v = this.lookup(e.name, scopes);
+          if (v && v.__action) { this.execBlock(v.__action.stmts, v.__action.scopes.map(s => ({ ...s }))); return null; }
+        }
+        return this.call(e, scopes);
+      }
       case 'mcall': {
+        if (e.actionField) {
+          const recv = this.eval(e.recv, scopes);
+          const av = recv && recv[e.name];
+          if (av && av.__action) this.execBlock(av.__action.stmts, av.__action.scopes.map(s => ({ ...s })));
+          return null;
+        }
         const self = this.eval(e.recv, scopes);
         const args = e.args.map(a => this.eval(a, scopes));
         return this.runBody(this.methods[e.method], { self }, args, e, e.method).ret;

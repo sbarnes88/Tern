@@ -954,5 +954,65 @@ test('component import errors', () => {
   assert.ok(e2.phase === 'import error' && e2.msg.includes('does not define'), e2.msg);
 });
 
+
+// ================= Action callbacks =================
+test('action callback prop: close a card', () => {
+  const p = T.load(`page "t"
+struct CardP { title: Text, onClose: Action }
+component Card(p: CardP) {
+  row { text p.title
+  button "X" -> p.onClose() }
+}
+state show: Bool = true
+view {
+  if show { Card(title: "Hi", onClose: action { show = false }) }
+  if !show { text "closed" }
+}`);
+  assert.ok(T.renderText(p.render()).join('\n').includes('[ X ]'));
+  findBtn(p.render(), 'X').click();
+  assert.deepStrictEqual(T.renderText(p.render()), ['closed']);
+});
+test('action callback: can mutate caller state and locals captured at call site', () => {
+  const p = T.load(`page "t"
+struct P { run: Action }
+component C(p: P) { button "go" -> p.run() }
+state n: Int = 0
+view {
+  C(run: action { n = n + 2 })
+  text toText(n)
+}`);
+  findBtn(p.render(), 'go').click();
+  assert.deepStrictEqual(T.renderText(p.render()), ['[ go ]', '2']);
+});
+test('action callback: multiple cards with different actions', () => {
+  const p = T.load(`page "t"
+struct P { label: Text, onPick: Action }
+component Btn(p: P) { button p.label -> p.onPick() }
+state which: Text = ""
+view {
+  Btn(label: "A", onPick: action { which = "a" })
+  Btn(label: "B", onPick: action { which = "b" })
+  text which
+}`);
+  findBtn(p.render(), 'B').click();
+  assert.deepStrictEqual(T.renderText(p.render()), ['[ A ]', '[ B ]', 'b']);
+});
+test('action errors', () => {
+  const err2 = (src, msg) => { const e = errOf(src); assert.ok(e.phase === 'type error' && e.msg.includes(msg), e.msg); };
+  err2(`page "t"
+struct P { onClose: Action }
+component C(p: P) { text "x" }
+view { C(onClose: 1) }`, 'needs Action');
+  err2(`page "t"
+struct P { onClose: Action }
+state a: Action = action { }
+state b: Action = action { }
+view { if a == b { text "x" } }`, 'cannot compare Action');
+  err2(`page "t"
+struct P { onClose: Action }
+component C(p: P) { button "x" -> p.onClose(1) }
+view { text "x" }`, 'takes no arguments');
+});
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

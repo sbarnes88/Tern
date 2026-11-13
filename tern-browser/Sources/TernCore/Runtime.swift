@@ -4,8 +4,17 @@ import Foundation
 // Runtime errors (division by zero, index out of range, deep recursion, numbers too big,
 // too much work) are thrown as TernError and never crash the host.
 
+typealias Scopes = [[String: Value]]
+
+public final class ActionValue: Equatable {
+    let stmts: [Stmt]
+    let scopes: Scopes
+    init(_ stmts: [Stmt], _ scopes: Scopes) { self.stmts = stmts; self.scopes = scopes }
+    public static func == (lhs: ActionValue, rhs: ActionValue) -> Bool { lhs === rhs }
+}
+
 public enum Value: Equatable, CustomStringConvertible {
-    case int(Int), float(Double), text(String), bool(Bool), list([Value]), record([String: Value]), none
+    case int(Int), float(Double), text(String), bool(Bool), list([Value]), record([String: Value]), none, action(ActionValue)
 
     public var description: String {
         switch self {
@@ -16,6 +25,7 @@ public enum Value: Equatable, CustomStringConvertible {
         case .list(let xs): return "[" + xs.map { $0.description }.joined(separator: ", ") + "]"
         case .record(let r): return "{" + r.keys.sorted().map { "\($0): \(r[$0]!)" }.joined(separator: ", ") + "}"
         case .none: return "null"
+        case .action: return "(action)"
         }
     }
     var asInt: Int { if case .int(let i) = self { return i }; return 0 }
@@ -97,8 +107,6 @@ private let MAX_LIST = 1_000_000
 private let MAX_TEXT = 10_000_000
 
 private func clamp(_ v: Int, _ lo: Int, _ hi: Int) -> Int { min(max(v, lo), hi) }
-
-typealias Scopes = [[String: Value]]
 
 public final class Page {
     let prog: Program
@@ -192,7 +200,7 @@ public final class Page {
         case .optional(let inner):
             if raw is NSNull { return .none }
             return decodeSaved(raw, inner)
-        case .unit: return nil
+        case .unit, .action: return nil
         }
     }
 
@@ -205,6 +213,7 @@ public final class Page {
         case .list(let xs): return xs.map { encodeSaved($0) }
         case .record(let r): return r.mapValues { encodeSaved($0) }
         case .none: return NSNull()
+        case .action: return NSNull()
         }
     }
 
@@ -389,11 +398,25 @@ public final class Page {
         case .binary(let op, let l, let r):
             return try binop(e, op, l, r, &scopes)
         case .call(let name, let args):
+            if let v = try? lookup(name, scopes, e.pos), case .action(let av) = v, fns[name] == nil, BUILTINS[name] == nil {
+                var sc = av.scopes
+                try execBlock(av.stmts, &sc)
+                return .none
+            }
             return try call(e, name, args, &scopes)
-        case .mcall(let recv, _, let argExprs):
+        case .mcall(let recv, let name, let argExprs):
+            if e.actionField {
+                if case .record(let r) = try eval(recv, &scopes), case .action(let av)? = r[name] {
+                    var sc = av.scopes
+                    try execBlock(av.stmts, &sc)
+                }
+                return .none
+            }
             let selfVal = try eval(recv, &scopes)
             let args = try argExprs.map { try eval($0, &scopes) }
             return try runBody(methods[e.method!]!, ["self": selfVal], args, e, e.method!).ret
+        case .action(let stmts):
+            return .action(ActionValue(stmts, scopes))
         case .construct(let name, let fields):
             var o: [String: Value] = [:]
             var given = Set<String>()
