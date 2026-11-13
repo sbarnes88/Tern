@@ -78,21 +78,27 @@ indirect enum ViewKind {
     case cells(Bool, [Cell])                   // header (true) or cells (false)
     case vif(Expr, [ViewItem], [ViewItem])
     case vfor(String, Expr, [ViewItem])
+    case component(String, [(String, Expr, Pos)])  // render a component by name with named props
     case link(Expr, Expr?, [Stmt]?, [Mod])
     case image(Expr, [Mod])
     case divider
 }
 struct ViewItem { let kind: ViewKind; let pos: Pos }
 
-struct StructDecl { let name: String; let namePos: Pos; let fields: [(String, TType, Pos)]; let methods: [FnDecl]; let pos: Pos }
+struct StructField { let name: String; let type: TType; var defaultExpr: Expr?; let pos: Pos }
+struct StructDecl { let name: String; let namePos: Pos; let fields: [StructField]; let methods: [FnDecl]; let pos: Pos }
+struct ComponentDecl { let name: String; let propName: String; let propType: TType; let body: [ViewItem]; let pos: Pos }
 struct StateDecl { let name: String; let type: TType; let initial: Expr; let pos: Pos; var saved = false }
 struct FnDecl { let name: String; let params: [(String, TType, Pos)]; let ret: TType; let body: [Stmt]; let pos: Pos }
 struct StyleDecl { let name: String; let mods: [Mod]; let pos: Pos }
 struct ViewDecl { let name: String; let body: [ViewItem]; let pos: Pos }
+struct ComponentImport { let name: String; let file: String; let pos: Pos }
 
 struct Program {
     let title: String?
+    let imports: [ComponentImport]
     let structs: [StructDecl]
+    let components: [ComponentDecl]
     let states: [StateDecl]
     let fns: [FnDecl]
     let styles: [StyleDecl]

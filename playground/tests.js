@@ -889,5 +889,70 @@ test('old reserved names are only the documented ones', () => {
   assert.strictEqual(p.render()[0].text, 'n 3');
 });
 
+
+
+// ================= struct defaults & components =================
+test('struct defaults: omit defaulted fields, require others', () => {
+  const p = page('text p.name + " " + toText(p.qty)', 'struct Item { name: Text\n qty: Int = 1\n note: Text = "" }\nstate p: Item = Item(name: "Tea")');
+  assert.strictEqual(text(p), 'Tea 1');
+});
+test('struct defaults: override and all-default construct', () => {
+  const p = page('text a.note + toText(b.qty)', 'struct Item { name: Text = "x"\n qty: Int = 1\n note: Text = "n" }\nstate a: Item = Item(note: "hi")\nstate b: Item = Item(qty: 3)');
+  assert.strictEqual(text(p), 'hi3');
+});
+test('struct defaults: missing required field is an error', () => {
+  const e = errOf('page "t"\nstruct Item { name: Text\n qty: Int = 1 }\nstate p: Item = Item(qty: 2)\nview { text "" }');
+  assert.ok(e.phase === 'type error' && e.msg.includes('name'), e.msg);
+});
+test('struct defaults: default type checked', () => {
+  const e = errOf('page "t"\nstruct Item { name: Text = 1 }\nstate p: Item = Item(name: "a")\nview { text "" }');
+  assert.strictEqual(e.phase, 'type error');
+});
+
+test('component: inline declaration and render', () => {
+  const p = T.load('page "t"\nstruct P { title: Text }\ncomponent Card(p: P) { heading p.title\n text "body" }\nview { Card(title: "Hi") }');
+  assert.deepStrictEqual(T.renderText(p.render()), ['HI', 'body']);
+});
+test('component: prop defaults and expressions', () => {
+  const p = T.load('page "t"\nstruct P { name: Text\n n: Int = 2\n label: Text = "x" }\ncomponent C(p: P) { text p.name + " " + toText(p.n) + p.label }\nview { C(name: "A")\n C(name: "B", n: 5, label: "!") }');
+  assert.deepStrictEqual(T.renderText(p.render()), ['A 2x', 'B 5!']);
+});
+test('component: reuses on a page and in a loop', () => {
+  const p = T.load('page "t"\nstruct P { t: Text }\ncomponent Tag(p: P) { bullet p.t }\nstate xs: List<Text> = ["a", "b"]\nview { Tag(t: "z")\n for x in xs { Tag(t: x) } }');
+  assert.deepStrictEqual(T.renderText(p.render()), ['* z', '* a', '* b']);
+});
+test('component errors: unknown, missing, duplicate, type, unknown prop', () => {
+  const bad = (src, msg) => { const e = errOf(src); assert.ok(e.phase === 'type error' && e.msg.includes(msg), e.msg); };
+  const base = 'page "t"\nstruct P { title: Text\n n: Int = 1 }\ncomponent Card(p: P) { text p.title }\n';
+  bad(base + 'view { Card() }', 'needs');
+  bad(base + 'view { Card(nope: "x") }', 'no property');
+  bad(base + 'view { Card(title: "x", title: "y") }', 'twice');
+  bad(base + 'view { Card(title: 5) }', 'needs Text');
+  bad(base + 'view { Missing(title: "x") }', 'unknown component');
+});
+test('component: import from component source map', () => {
+  const card = 'struct CardP { title: Text\n sub: Text = "" }\ncomponent Card(p: CardP) { heading p.title\n if p.sub != "" { text p.sub } }';
+  const p = T.load('page "t"\nimport component Card from "Card.tern"\nview { Card(title: "Hi", sub: "yo") }', { components: { 'Card.tern': card } });
+  assert.deepStrictEqual(T.renderText(p.render()), ['HI', 'yo']);
+});
+test('component: import shorthand and default props', () => {
+  const card = 'struct CardP { title: Text\n sub: Text = "" }\ncomponent Card(p: CardP) { heading p.title }';
+  const p = T.load('page "t"\nimport component Card\nview { Card(title: "Hi") }', { components: { 'Card.tern': card } });
+  assert.deepStrictEqual(T.renderText(p.render()), ['HI']);
+});
+test('component: can use a .ternlib for helpers', () => {
+  const card = 'use "fmt.ternlib"\nstruct P { name: Text }\ncomponent Hello(p: P) { text fmt.greet(p.name) }';
+  const lib = 'fn greet(who: Text): Text { return "hi " + who }';
+  const p = T.load('page "t"\nimport component Hello\nview { Hello(name: "Jo") }', { components: { 'Hello.tern': card }, libraries: { fmt: lib } });
+  assert.deepStrictEqual(T.renderText(p.render()), ['hi Jo']);
+});
+test('component import errors', () => {
+  const err2 = (src, opts) => { try { T.load(src, opts); } catch (e) { return e; } throw new Error('expected an error'); };
+  const e1 = err2('page "t"\nimport component Card\nview { text "x" }');
+  assert.ok(e1.phase === 'import error' && e1.msg.includes('not found'), e1.msg);
+  const e2 = err2('page "t"\nimport component Card\nview { text "x" }', { components: { 'Card.tern': 'struct P { x: Int }\ncomponent Other(p: P) { text "x" }' } });
+  assert.ok(e2.phase === 'import error' && e2.msg.includes('does not define'), e2.msg);
+});
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

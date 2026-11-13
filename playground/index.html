@@ -260,6 +260,7 @@ const KEYWORDS = new Set([
   // saved state, timers
   'saved', 'every',
   'struct', 'with', 'use', 'self',
+  'component', 'import',
 ]);
 const TOKEN_RE = new RegExp(
   '(?<ws>[ \\t\\r]+)|(?<nl>\\n)|(?<comment>//[^\\n]*)|' +
@@ -354,16 +355,18 @@ class Parser {
 
   program() {
     let title = null;
-    const states = [], fns = [], styles = [], views = [], structs = [];
+    const states = [], fns = [], styles = [], views = [], structs = [], components = [], imports = [];
     const uses = [];
     if (this.lib && this.is('page')) throw new TernError('a library has no page title; it holds only struct and fn', this.peek().pos, 'syntax error');
     if (this.accept('page')) title = this.nextKind('str', 'a page title in quotes').val;
     while (this.peek().kind !== 'eof') {
       const t = this.peek();
-      if (this.lib && (this.is('state') || this.is('view') || this.is('style') || this.is('use')))
+      if (this.lib && (this.is('state') || this.is('view') || this.is('style') || this.is('use') || this.is('component') || this.is('import')))
         throw new TernError(this.is('use') ? 'a library cannot use other libraries yet' : `a library holds only struct and fn; keep '${t.val}' in the page`, t.pos, 'syntax error');
       if (this.is('use')) { this.next(); uses.push(N('use', t.pos, { file: this.nextKind('str', 'a library file name in quotes, like "shop.ternlib"').val })); }
+      else if (this.is('import')) { this.next(); imports.push(this.componentImport()); }
       else if (this.is('struct')) structs.push(this.structDecl());
+      else if (this.is('component')) components.push(this.componentDecl());
       else if (this.is('saved') && this.is('state', 1)) { this.next(); const d = this.stateDecl(); d.saved = true; states.push(d); }
       else if (this.is('state')) states.push(this.stateDecl());
       else if (this.is('fn')) fns.push(this.fnDecl());
@@ -372,10 +375,10 @@ class Parser {
         this.next();
         const name = this.peek().kind === 'id' ? this.next().val : 'home';
         views.push(N('view', t.pos, { name, body: this.viewBlock() }));
-      } else throw new TernError(`expected 'use', 'struct', 'state', 'fn', 'style' or 'view' but found '${t.val}'`, t.pos, 'syntax error');
+      } else throw new TernError(`expected 'use', 'import', 'struct', 'component', 'state', 'fn', 'style' or 'view' but found '${t.val}'`, t.pos, 'syntax error');
     }
-    if (!views.length && !this.lib) throw new TernError('page has no view', this.peek().pos, 'syntax error');
-    return N('program', [1, 1], { title, uses, structs, states, fns, styles, views });
+    if (!views.length && !this.lib && !components.length) throw new TernError('page has no view', this.peek().pos, 'syntax error');
+    return N('program', [1, 1], { title, uses, imports, structs, components, states, fns, styles, views });
   }
 
   type() {
@@ -401,11 +404,32 @@ class Parser {
       if (ft.kind === 'kw') throw new TernError(`'${ft.val}' is a reserved word and cannot be a field name; try another, like ${ft.val}Value`, ft.pos, 'syntax error');
       if (ft.kind === 'eof') throw new TernError("missing '}'", ft.pos, 'syntax error');
       const f = this.ident('a field name'); this.expect(':');
-      fields.push([f.val, this.type(), f.pos]);
+      const ty = this.type();
+      const def = this.accept('=') ? this.expr() : null;
+      fields.push([f.val, ty, f.pos, def]);
       this.accept(',');
     }
     this.expect('}');
     return N('structdecl', pos, { name: this.prefix + nameTok.val, namePos: nameTok.pos, fields, methods });
+  }
+  componentDecl() {
+    const pos = this.next().pos;
+    const nameTok = this.ident('a component name');
+    this.expect('(');
+    const propName = this.ident('a parameter name').val; this.expect(':');
+    const propType = this.type();
+    this.expect(')');
+    return N('componentdecl', pos, { name: this.prefix + nameTok.val, propName, propType, body: this.viewBlock() });
+  }
+  componentImport() {
+    const pos = this.peek().pos;
+    this.expect('component');
+    const name = this.ident('a component name').val;
+    let file = name + '.tern';
+    const nx = this.peek();
+    if ((nx.kind === 'id' || nx.kind === 'kw') && nx.val === 'from') { this.next(); file = this.nextKind('str', 'a component file name in quotes').val; }
+    else if (nx.kind === 'str') { file = this.next().val; }
+    return N('compimport', pos, { name, file });
   }
   stateDecl() {
     const pos = this.next().pos;
@@ -611,7 +635,23 @@ class Parser {
     this.expect('}');
     return out;
   }
+  componentArgs() {
+    const args = [];
+    while (!this.is(')')) {
+      const f = this.peek();
+      if (!(f.kind === 'id' && this.is(':', 1))) throw new TernError('a component needs named properties, like Card(title: "Hi")', f.pos, 'syntax error');
+      this.next(); this.next();
+      args.push([f.val, this.expr(), f.pos]);
+      if (!this.accept(',')) break;
+    }
+    this.expect(')');
+    return args;
+  }
   viewItem() {
+    if (this.peek().kind === 'id' && this.is('(', 1)) {
+      const t = this.next(); this.next();
+      return N('component', t.pos, { name: t.val, args: this.componentArgs() });
+    }
     const t = this.next();
     const k = t.kind === 'kw' ? t.val : null;
     if (k === 'heading' || k === 'text' || k === 'bullet') {
@@ -802,11 +842,7 @@ class Parser {
 
 function parse(src, o) { return new Parser(tokenize(src), o).program(); }
 
-// Reads a page and the libraries it names with `use "shop.ternlib"`. Each library is parsed and
-// checked on its own first (so its errors name its file), then its structs and functions are added to
-// the page under the prefix `shop.`. opts.libraries is { shop: "source text" }.
-function buildProgram(src, opts) {
-  opts = opts || {};
+function buildLibraries(src, opts) {
   const toks = tokenize(src), mods = {}, libs = [];
   for (let k = 0; k + 1 < toks.length; k++) {
     if (!(toks[k].kind === 'kw' && toks[k].val === 'use' && toks[k + 1].kind === 'str')) continue;
@@ -828,9 +864,38 @@ function buildProgram(src, opts) {
     mods[name] = { fns: new Set(lp.fns.map(f => strip(f.name))), structs: new Set(lp.structs.map(s => strip(s.name))) };
     libs.push(lp);
   }
-  const prog = new Parser(toks, { mods }).program();
-  prog.structs = [...libs.flatMap(l => l.structs), ...prog.structs];
-  prog.fns = [...libs.flatMap(l => l.fns), ...prog.fns];
+  return { mods, libs };
+}
+
+// Reads a page and the libraries it names with `use "shop.ternlib"`. Each library is parsed and
+// checked on its own first (so its errors name its file), then its structs and functions are added to
+// the page under the prefix `shop.`. opts.libraries is { shop: "source text" }.
+function buildProgram(src, opts, _seen) {
+  opts = opts || {}; _seen = _seen || new Set();
+  const { mods, libs } = buildLibraries(src, opts);
+  const prog = new Parser(tokenize(src), { mods }).program();
+  const compSources = opts.components || opts.componentSources || {};
+  let compStructs = [], compDecls = [], compFns = [];
+  for (const imp of (prog.imports || [])) {
+    const csrc = compSources[imp.file] || compSources[imp.name + '.tern'] || compSources[imp.name];
+    if (typeof csrc !== 'string') throw new TernError(`component ${imp.file} was not found (${opts.libraryHint || 'put it next to the page'})`, imp.pos, 'import error');
+    const key = imp.file;
+    if (_seen.has(key)) throw new TernError(`component ${imp.file} is imported in a cycle`, imp.pos, 'import error');
+    const seen = new Set(_seen); seen.add(key);
+    try {
+      const cprog = buildProgram(csrc, opts, seen);
+      const wanted = (cprog.components || []).filter(c => c.name === imp.name);
+      if (!wanted.length) throw new TernError(`component ${imp.file} does not define '${imp.name}'`, imp.pos, 'import error');
+      compStructs = compStructs.concat(cprog.structs || []);
+      compDecls = compDecls.concat(wanted);
+      compFns = compFns.concat(cprog.fns || []);
+    } catch (e) { if (e instanceof TernError && !e.file) e.file = imp.file; throw e; }
+  }
+  const dedup = (arr, key) => { const s = new Set(); return arr.filter(x => !s.has(x[key]) && s.add(x[key])); };
+  prog.structs = [...dedup([...libs.flatMap(l => l.structs), ...compStructs], 'name'), ...(prog.structs || [])];
+  prog.components = [...dedup(compDecls, 'name'), ...(prog.components || [])];
+  prog.fns = [...dedup([...libs.flatMap(l => l.fns), ...compFns], 'name'), ...(prog.fns || [])];
+  prog.imports = prog.imports || [];
   return prog;
 }
 
@@ -875,7 +940,7 @@ function alwaysReturns(stmts) {
 
 class Checker {
   constructor(prog, opts) {
-    this.prog = prog; this.opts = opts || {}; this.structs = {}; this.methods = {}; this.curMethod = null; this.stmtCall = null; this.states = {}; this.fns = {}; this.styles = {}; this.views = {};
+    this.prog = prog; this.opts = opts || {}; this.structs = {}; this.components = {}; this.methods = {}; this.curMethod = null; this.stmtCall = null; this.states = {}; this.fns = {}; this.styles = {}; this.views = {};
     this.scopes = []; this.ret = null; this.tbl = null; this.nest = 0;
   }
   err(msg, node) { throw new TernError(msg, node.pos, 'type error'); }
@@ -916,6 +981,13 @@ class Checker {
       };
       reach(st.name, []);
     }
+    for (const c of (p.components || [])) {
+      if (c.name in this.components || c.name in this.views || c.name in this.fns || c.name in this.states || c.name in this.styles || c.name in this.structs)
+        this.err(`'${c.name}' is defined twice`, c);
+      if (typeof c.propType !== 'string' || !(c.propType in this.structs))
+        this.err(`component '${c.name}' needs a props struct type, like component ${c.name}(props: MyProps)`, c);
+      this.components[c.name] = c;
+    }
     for (const s of p.states) {
       if (s.name in this.states || s.name in this.fns) this.err(`'${s.name}' is defined twice`, s);
       this.states[s.name] = s.type;
@@ -933,6 +1005,7 @@ class Checker {
       this.views[v.name] = v;
     }
     this.scopes = [{}];
+    for (const st of p.structs) for (const f of st.fields) if (f[3]) this.expectType(f[3], f[1], `default for field '${f[0]}' of ${st.name}`);
     for (const s of p.states) this.expectType(s.init, s.type, `state '${s.name}'`);
     for (const s of p.styles) {
       for (const m of s.mods) {
@@ -957,6 +1030,11 @@ class Checker {
         this.curMethod = null;
         if (m.ret !== UNIT && !alwaysReturns(m.body)) this.err(`method '${m.name}' must return ${tname(m.ret)} on every path`, m);
       }
+    }
+    for (const c of (p.components || [])) {
+      this.scopes = [{ [c.propName]: c.propType }, {}];
+      this.ret = null;
+      this.view(c.body);
     }
     for (const v of p.views) { this.ret = null; this.scopes = [{}]; this.view(v.body); }
     return this;
@@ -1086,7 +1164,7 @@ class Checker {
           given.add(fname);
           this.expectType(val, f[1], `field '${fname}' of ${e.name}`);
         }
-        const missing = st.fields.filter(f => !given.has(f[0]));
+        const missing = st.fields.filter(f => !given.has(f[0]) && !f[3]);
         if (missing.length) this.err(`${e.name} needs ${missing.map(f => `${f[0]}: ${tname(f[1])}`).join(', ')}`, e);
         return e.name;
       }
@@ -1330,6 +1408,23 @@ class Checker {
           if (!isList(ity)) this.err(`can only loop over a List, not ${tname(ity)}`, it.iter);
           this.scopes.push({ [it.var]: ity[1], ['\0' + it.var]: true }); this.view(it.body); this.scopes.pop(); break;
         }
+        case 'component': {
+          const c = this.components[it.name];
+          if (!c) this.err(`unknown component '${it.name}' (import it with: import component ${it.name} from "${it.name}.tern", or declare it in this file)`, it);
+          const st = this.structs[c.propType];
+          if (!st) this.err(`component '${it.name}' has an invalid props type`, it);
+          const given = new Set();
+          for (const [fname, val, fpos] of it.args) {
+            const f = st.fields.find(x => x[0] === fname);
+            if (!f) this.err(`${it.name} has no property '${fname}' (its properties are ${st.fields.map(x => x[0]).join(', ')})`, { pos: fpos });
+            if (given.has(fname)) this.err(`property '${fname}' is given twice`, { pos: fpos });
+            given.add(fname);
+            this.expectType(val, f[1], `property '${fname}' of ${it.name}`);
+          }
+          const missing = st.fields.filter(f => !given.has(f[0]) && !f[3]);
+          if (missing.length) this.err(`${it.name} needs ${missing.map(f => `${f[0]}: ${tname(f[1])}`).join(', ')}`, it);
+          break;
+        }
         case 'link':
           this.expectType(it.label, TEXT, 'a link label');
           if (it.target) this.expectType(it.target, TEXT, 'a link target');
@@ -1364,10 +1459,11 @@ class Page {
     this.prog = buildProgram(src, opts);
     new Checker(this.prog, opts).run();
     this.title = this.prog.title || 'Untitled';
-    this.fns = {}; this.styles = {}; this.views = {}; this.structs = {}; this.methods = {};
+    this.fns = {}; this.styles = {}; this.views = {}; this.structs = {}; this.methods = {}; this.components = {};
     for (const st of this.prog.structs) { this.structs[st.name] = st; for (const m of st.methods) this.methods[`${st.name}.${m.name}`] = m; }
+    for (const c of (this.prog.components || [])) this.components[c.name] = c;
     for (const v of this.prog.views) this.views[v.name] = v;
-    this.screen = this.prog.views[0].name; this.history = [];
+    this.screen = this.prog.views[0] ? this.prog.views[0].name : 'home'; this.history = [];
     for (const f of this.prog.fns) this.fns[f.name] = f;
     for (const s of this.prog.styles) this.styles[s.name] = s;
     this.state = {};
@@ -1391,7 +1487,9 @@ class Page {
     const st = this.structs[ty];
     if (!st || v === null || typeof v !== 'object' || Array.isArray(v)) return false;
     const keys = Object.keys(v);
-    return keys.length === st.fields.length && st.fields.every(f => keys.includes(f[0]) && this.fits(v[f[0]], f[1]));
+    const allowed = new Set(st.fields.map(f => f[0]));
+    if (keys.some(k => !allowed.has(k))) return false;
+    return st.fields.every(f => (Object.prototype.hasOwnProperty.call(v, f[0]) ? this.fits(v[f[0]], f[1]) : !!f[3]));
   }
   // the values of the `saved state`s as JSON text for the host to keep, or null if there are none or they
   // are over 64 KB (the host should then keep nothing and may tell the person)
@@ -1503,8 +1601,15 @@ class Page {
         return this.runBody(this.methods[e.method], { self }, args, e, e.method).ret;
       }
       case 'construct': {
+        const vals = {};
+        for (const [n, v] of e.fields) vals[n] = this.eval(v, scopes);
+        const st = this.structs[e.name];
         const o = {};
-        for (const f of this.structs[e.name].fields) o[f[0]] = this.eval(e.fields.find(x => x[0] === f[0])[1], scopes);
+        if (st) {
+          for (const f of st.fields) o[f[0]] = Object.prototype.hasOwnProperty.call(vals, f[0]) ? vals[f[0]] : this.eval(f[3], scopes);
+        } else {
+          for (const [n, v] of e.fields) o[n] = vals[n];
+        }
         return o;
       }
       case 'field': return this.eval(e.e, scopes)[e.name];
@@ -1759,6 +1864,18 @@ class Page {
             try { this.view(it.body, scopes, out); } finally { scopes.pop(); }
           }
           break;
+        case 'component': {
+          const c = this.components[it.name];
+          if (c) {
+            const props = {}, given = new Set();
+            for (const [n, v] of it.args) { props[n] = this.eval(v, scopes); given.add(n); }
+            const st = this.structs[c.propType];
+            if (st) for (const f of st.fields) if (!given.has(f[0]) && f[3]) props[f[0]] = this.eval(f[3], scopes);
+            scopes.push({ [c.propName]: props });
+            try { this.view(c.body, scopes, out); } finally { scopes.pop(); }
+          }
+          break;
+        }
         case 'link': {
           const snap = scopes.map(s => ({ ...s }));
           out.push({ t: 'link', text: this.eval(it.label, scopes), target: it.target ? this.eval(it.target, scopes) : null,

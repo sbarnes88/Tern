@@ -1074,5 +1074,69 @@ test("number formatting matches the playground") {
     try eq(try txt1("text toText(round(0.0 - 2.5)) + toText(round(0.49999999999999994))"), "-20")
 }
 
+
+
+// ================= struct defaults & components =================
+test("struct defaults: omit defaulted fields, require others") {
+    let p = try page(#"text p.name + " " + toText(p.qty)"#, "struct Item { name: Text\n qty: Int = 1\n note: Text = \"\" }\nstate p: Item = Item(name: \"Tea\")")
+    try eq(try text(p), "Tea 1")
+}
+test("struct defaults: override and all-default construct") {
+    let p = try page(#"text a.note + toText(b.qty)"#, "struct Item { name: Text = \"x\"\n qty: Int = 1\n note: Text = \"n\" }\nstate a: Item = Item(note: \"hi\")\nstate b: Item = Item(qty: 3)")
+    try eq(try text(p), "hi3")
+}
+test("struct defaults: missing required field is an error") {
+    _ = try expectErr("page \"t\"\nstruct Item { name: Text\n qty: Int = 1 }\nstate p: Item = Item(qty: 2)\nview { text \"\" }", "type error", "name")
+}
+test("struct defaults: default type checked") {
+    _ = try expectErr("page \"t\"\nstruct Item { name: Text = 1 }\nstate p: Item = Item(name: \"a\")\nview { text \"\" }", "type error", "needs Text")
+}
+test("component: inline declaration and render") {
+    let p = try Page("page \"t\"\nstruct P { title: Text }\ncomponent Card(p: P) { heading p.title\n text \"body\" }\nview { Card(title: \"Hi\") }")
+    try eq(renderText(try p.render()), ["HI", "body"])
+}
+test("component: prop defaults and expressions") {
+    let p = try Page("page \"t\"\nstruct P { name: Text\n n: Int = 2\n label: Text = \"x\" }\ncomponent C(p: P) { text p.name + \" \" + toText(p.n) + p.label }\nview { C(name: \"A\")\n C(name: \"B\", n: 5, label: \"!\") }")
+    try eq(renderText(try p.render()), ["A 2x", "B 5!"])
+}
+test("component: reuses on a page and in a loop") {
+    let p = try Page("page \"t\"\nstruct P { t: Text }\ncomponent Tag(p: P) { bullet p.t }\nstate xs: List<Text> = [\"a\", \"b\"]\nview { Tag(t: \"z\")\n for x in xs { Tag(t: x) } }")
+    try eq(renderText(try p.render()), ["* z", "* a", "* b"])
+}
+test("component errors: unknown, missing, duplicate, type, unknown prop") {
+    let base = "page \"t\"\nstruct P { title: Text\n n: Int = 1 }\ncomponent Card(p: P) { text p.title }\n"
+    _ = try expectErr(base + "view { Card() }", "type error", "needs")
+    _ = try expectErr(base + "view { Card(nope: \"x\") }", "type error", "no property")
+    _ = try expectErr(base + "view { Card(title: \"x\", title: \"y\") }", "type error", "twice")
+    _ = try expectErr(base + "view { Card(title: 5) }", "type error", "needs Text")
+    _ = try expectErr(base + "view { Missing(title: \"x\") }", "type error", "unknown component")
+}
+test("component: import from component source map") {
+    let card = "struct CardP { title: Text\n sub: Text = \"\" }\ncomponent Card(p: CardP) { heading p.title\n if p.sub != \"\" { text p.sub } }"
+    let p = try Page("page \"t\"\nimport component Card from \"Card.tern\"\nview { Card(title: \"Hi\", sub: \"yo\") }", components: ["Card.tern": card])
+    try eq(renderText(try p.render()), ["HI", "yo"])
+}
+test("component: import shorthand and default props") {
+    let card = "struct CardP { title: Text\n sub: Text = \"\" }\ncomponent Card(p: CardP) { heading p.title }"
+    let p = try Page("page \"t\"\nimport component Card\nview { Card(title: \"Hi\") }", components: ["Card.tern": card])
+    try eq(renderText(try p.render()), ["HI"])
+}
+test("component: can use a .ternlib for helpers") {
+    let card = "use \"fmt.ternlib\"\nstruct P { name: Text }\ncomponent Hello(p: P) { text fmt.greet(p.name) }"
+    let lib = "fn greet(who: Text): Text { return \"hi \" + who }"
+    let p = try Page("page \"t\"\nimport component Hello\nview { Hello(name: \"Jo\") }", libraries: ["fmt": lib], components: ["Hello.tern": card])
+    try eq(renderText(try p.render()), ["hi Jo"])
+}
+test("component import errors") {
+    do { _ = try Page("page \"t\"\nimport component Card\nview { text \"x\" }") }
+    catch let e as TernError { try check(e.phase == "import error" && e.msg.contains("not found"), "\(e)"); return }
+    throw Fail(description: "expected an error")
+}
+test("component import errors: wrong export") {
+    do { _ = try Page("page \"t\"\nimport component Card\nview { text \"x\" }", components: ["Card.tern": "struct P { x: Int }\ncomponent Other(p: P) { text \"x\" }"]) }
+    catch let e as TernError { try check(e.phase == "import error" && e.msg.contains("does not define"), "\(e)"); return }
+    throw Fail(description: "expected an error")
+}
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

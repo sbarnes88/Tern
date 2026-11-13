@@ -1,0 +1,34 @@
+// Card.tern: a reusable component (a .tern file, not a .ternlib).
+// Import it from a page with:  import component Card from "Card.tern"
+// (or shorthand: import component Card)
+// The host provides component sources when loading; components can also `use`
+// .ternlib files for shared helper functions.
+
+struct CardProps {
+  title: Text
+  body: Text = ""
+  accent: Color = #4f46e5
+  badge: Text = ""
+}
+
+component Card(props: CardProps) {
+  column padding 12 gap 4 border #d1d5db background #ffffff {
+    row gap 8 {
+      text props.title bold color props.accent
+      if props.badge != "" {
+        text props.badge size 12 color #ffffff background props.accent padding 4
+      }
+    }
+    if props.body != "" {
+      text props.body color #374151
+    }
+  }
+}
+
+// Preview (this file is also importable: `import component Card from "Card.tern"`)
+page "Card"
+view {
+  heading "Card component"
+  Card(title: "Hello", body: "A reusable, typed component.", badge: "demo")
+  Card(title: "Defaults", body: "accent/badge use defaults when omitted.")
+}

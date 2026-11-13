@@ -10,6 +10,8 @@ public let KEYWORDS: Set<String> = [
     "image", "alt", "width", "height", "radius", "border", "font", "goto", "back",
     // 0.4
     "struct", "with", "use", "self", "checkbox", "resizable", "modal",
+    // components
+    "component", "import",
     // layout
     "gap", "margin", "grow", "maxwidth", "minwidth", "grid",
     // choices

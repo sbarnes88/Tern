@@ -54,6 +54,7 @@ final class Checker {
     let prog: Program
     let assets: AssetInfo?
     var structs: [String: StructDecl] = [:]
+    var components: [String: ComponentDecl] = [:]
     var methods: [String: (params: [TType], ret: TType)] = [:]
     var curMethod: FnDecl? = nil
     var stmtCall: Expr? = nil
@@ -87,11 +88,11 @@ final class Checker {
             if structs[st.name] != nil { throw err("struct '\(st.name)' is defined twice", st.namePos) }
             if st.fields.isEmpty { throw err("struct '\(st.name)' needs at least one field", st.pos) }
             var seen = Set<String>()
-            for (fname, _, fpos) in st.fields {
-                if seen.contains(fname) || fname == "__proto__" {
-                    throw err("field '\(fname)' is \(fname == "__proto__" ? "not allowed" : "defined twice") in struct \(st.name)", fpos)
+            for f in st.fields {
+                if seen.contains(f.name) || f.name == "__proto__" {
+                    throw err("field '\(f.name)' is \(f.name == "__proto__" ? "not allowed" : "defined twice") in struct \(st.name)", f.pos)
                 }
-                seen.insert(fname)
+                seen.insert(f.name)
             }
             structs[st.name] = st
             for m in st.methods {
@@ -110,7 +111,7 @@ final class Checker {
                 if path.contains(n) {
                     throw err("struct \(st.name) contains itself (\((path + [n]).joined(separator: " -> "))); a struct cannot hold itself, even inside a list", st.namePos)
                 }
-                for f in decl.fields { try reach(f.1, path + [n]) }
+                for f in decl.fields { try reach(f.type, path + [n]) }
             }
             try reach(.structType(st.name), [])
         }
@@ -135,7 +136,21 @@ final class Checker {
             }
             views[v.name] = v
         }
+        for c in p.components {
+            if components[c.name] != nil || views[c.name] != nil || fns[c.name] != nil || states[c.name] != nil || styles[c.name] != nil || structs[c.name] != nil {
+                throw err("'\(c.name)' is defined twice", c.pos)
+            }
+            guard case .structType(let sn) = c.propType, structs[sn] != nil else {
+                throw err("component '\(c.name)' needs a props struct type, like component \(c.name)(props: MyProps)", c.pos)
+            }
+            components[c.name] = c
+        }
         scopes = [[:]]
+        for st in p.structs {
+            for f in st.fields {
+                if let def = f.defaultExpr { try expectType(def, f.type, "default for field '\(f.name)' of \(st.name)") }
+            }
+        }
         for s in p.states { try expectType(s.initial, s.type, "state '\(s.name)'") }
         for s in p.styles {
             for m in s.mods {
@@ -159,6 +174,11 @@ final class Checker {
                 curMethod = nil
                 if m.ret != .unit && !alwaysReturns(m.body) { throw err("method '\(m.name)' must return \(m.ret) on every path", m.pos) }
             }
+        }
+        for c in p.components {
+            scopes = [[c.propName: c.propType], [:]]
+            ret = nil
+            try view(c.body)
         }
         for v in p.views { ret = nil; scopes = [[:]]; try view(v.body) }
     }
@@ -295,7 +315,7 @@ final class Checker {
             guard let ty = lookup(name) else {
                 if name == "self" { throw err("'self' only exists inside a struct's methods", e.pos) }
                 if let st = structs[name] {
-                    throw err("'\(name)' is a struct; create one like \(name)(\(st.fields.map { $0.0 + ": ..." }.joined(separator: ", ")))", e.pos)
+                    throw err("'\(name)' is a struct; create one like \(name)(\(st.fields.map { $0.name + ": ..." }.joined(separator: ", ")))", e.pos)
                 }
                 if fns[name] != nil || BUILTINS[name] != nil { throw err("'\(name)' is a function; call it like \(name)(...)", e.pos) }
                 throw err("unknown name '\(name)'", e.pos)
@@ -327,22 +347,22 @@ final class Checker {
             let st = structs[name]!
             var given = Set<String>()
             for (fname, val, fpos) in fields {
-                guard let f = st.fields.first(where: { $0.0 == fname }) else {
-                    throw err("\(name) has no field '\(fname)' (its fields are \(st.fields.map { $0.0 }.joined(separator: ", ")))", fpos)
+                guard let f = st.fields.first(where: { $0.name == fname }) else {
+                    throw err("\(name) has no field '\(fname)' (its fields are \(st.fields.map { $0.name }.joined(separator: ", ")))", fpos)
                 }
                 if given.contains(fname) { throw err("field '\(fname)' is given twice", fpos) }
                 given.insert(fname)
-                try expectType(val, f.1, "field '\(fname)' of \(name)")
+                try expectType(val, f.type, "field '\(fname)' of \(name)")
             }
-            let missing = st.fields.filter { !given.contains($0.0) }
-            if !missing.isEmpty { throw err("\(name) needs \(missing.map { "\($0.0): \($0.1)" }.joined(separator: ", "))", e.pos) }
+            let missing = st.fields.filter { !given.contains($0.name) && $0.defaultExpr == nil }
+            if !missing.isEmpty { throw err("\(name) needs \(missing.map { "\($0.name): \($0.type)" }.joined(separator: ", "))", e.pos) }
             return .structType(name)
         case .mcall(let recv, let name, let args):
             let isStmt = stmtCall === e; stmtCall = nil
             let t = try expr(recv)
             guard case .structType(let sn) = t, let st = structs[sn] else { throw err("only a struct has methods, but this is \(t)", e.pos) }
             guard let m = methods["\(sn).\(name)"] else {
-                let isField = st.fields.contains { $0.0 == name }
+                let isField = st.fields.contains { $0.name == name }
                 let have = st.methods.map { $0.name }.joined(separator: ", ")
                 throw err("\(sn) has no method '\(name)'" + (isField ? " (it is a field; leave off the brackets)" : " (its methods are \(have.isEmpty ? "none" : have))"), e.pos)
             }
@@ -357,21 +377,21 @@ final class Checker {
         case .field(let inner, let name):
             let t = try expr(inner)
             guard case .structType(let sn) = t, let st = structs[sn] else { throw err("only a struct has fields, but this is \(t)", e.pos) }
-            guard let f = st.fields.first(where: { $0.0 == name }) else {
-                throw err("\(sn) has no field '\(name)' (its fields are \(st.fields.map { $0.0 }.joined(separator: ", ")))", e.pos)
+            guard let f = st.fields.first(where: { $0.name == name }) else {
+                throw err("\(sn) has no field '\(name)' (its fields are \(st.fields.map { $0.name }.joined(separator: ", ")))", e.pos)
             }
-            return f.1
+            return f.type
         case .with(let inner, let updates):
             let t = try expr(inner)
             guard case .structType(let sn) = t, let st = structs[sn] else { throw err("'with' needs a struct on its left, but this is \(t)", e.pos) }
             var seen = Set<String>()
             for (fname, val, fpos) in updates {
-                guard let f = st.fields.first(where: { $0.0 == fname }) else {
-                    throw err("\(sn) has no field '\(fname)' (its fields are \(st.fields.map { $0.0 }.joined(separator: ", ")))", fpos)
+                guard let f = st.fields.first(where: { $0.name == fname }) else {
+                    throw err("\(sn) has no field '\(fname)' (its fields are \(st.fields.map { $0.name }.joined(separator: ", ")))", fpos)
                 }
                 if seen.contains(fname) { throw err("field '\(fname)' is changed twice", fpos) }
                 seen.insert(fname)
-                try expectType(val, f.1, "field '\(fname)' of \(sn)")
+                try expectType(val, f.type, "field '\(fname)' of \(sn)")
             }
             return t
         }
@@ -599,6 +619,24 @@ final class Checker {
                 guard let el = ity.element else { throw err("can only loop over a List, not \(ity)", iter.pos) }
                 scopes.append([v: el, "\0" + v: .bool]); defer { scopes.removeLast() }
                 try view(body)
+            case .component(let name, let args):
+                guard let c = components[name] else {
+                    throw err("unknown component '\(name)' (import it with: import component \(name) from \"\(name).tern\", or declare it in this file)", it.pos)
+                }
+                guard case .structType(let sn) = c.propType, let st = structs[sn] else {
+                    throw err("component '\(name)' has an invalid props type", it.pos)
+                }
+                var given = Set<String>()
+                for (fname, val, fpos) in args {
+                    guard let f = st.fields.first(where: { $0.name == fname }) else {
+                        throw err("\(name) has no property '\(fname)' (its properties are \(st.fields.map { $0.name }.joined(separator: ", ")))", fpos)
+                    }
+                    if given.contains(fname) { throw err("property '\(fname)' is given twice", fpos) }
+                    given.insert(fname)
+                    try expectType(val, f.type, "property '\(fname)' of \(name)")
+                }
+                let missing = st.fields.filter { !given.contains($0.name) && $0.defaultExpr == nil }
+                if !missing.isEmpty { throw err("\(name) needs \(missing.map { "\($0.name): \($0.type)" }.joined(separator: ", "))", it.pos) }
             case .link(let label, let target, let action, let mods):
                 try expectType(label, .text, "a link label")
                 if let t = target { try expectType(t, .text, "a link target") }

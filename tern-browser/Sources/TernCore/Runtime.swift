@@ -115,12 +115,14 @@ public final class Page {
 
     /// Parses, checks and starts a page. Throws TernError for syntax, type or runtime errors.
     public init(_ src: String, assets: AssetInfo? = nil, libraries: [String: String] = [:],
-                libraryHint: String = "put it next to the page", saved: String? = nil) throws {
-        prog = try buildProgram(src, libraries: libraries, hint: libraryHint)
+                libraryHint: String = "put it next to the page", saved: String? = nil,
+                components: [String: String] = [:]) throws {
+        prog = try buildProgram(src, libraries: libraries, hint: libraryHint, componentSources: components)
         try Checker(prog, assets: assets).run()
         title = prog.title ?? "Untitled"
         for v in prog.views { views[v.name] = v }
-        screen = prog.views[0].name
+        for c in prog.components { componentDecls[c.name] = c }
+        screen = prog.views.first?.name ?? "home"
         for f in prog.fns { fns[f.name] = f }
         for st in prog.structs { for m in st.methods { methods["\(st.name).\(m.name)"] = m } }
         for s in prog.styles { styles[s.name] = s }
@@ -136,6 +138,8 @@ public final class Page {
             state[s.name] = try eval(s.initial, &sc)
         }
     }
+
+    private var componentDecls: [String: ComponentDecl] = [:]
 
     public private(set) var savedNames: [String] = []
     private var structDecls: [String: StructDecl] = [:]
@@ -170,9 +174,20 @@ public final class Page {
             for x in xs { guard let v = decodeSaved(x, el) else { return nil }; out.append(v) }
             return .list(out)
         case .structType(let name):
-            guard let st = structDecls[name], let obj = raw as? [String: Any], obj.count == st.fields.count else { return nil }
+            guard let st = structDecls[name], let obj = raw as? [String: Any] else { return nil }
+            let allowed = Set(st.fields.map { $0.name })
+            if obj.keys.contains(where: { !allowed.contains($0) }) { return nil }
             var r: [String: Value] = [:]
-            for (fname, fty, _) in st.fields { guard let x = obj[fname], let v = decodeSaved(x, fty) else { return nil }; r[fname] = v }
+            for f in st.fields {
+                if let x = obj[f.name] {
+                    guard let v = decodeSaved(x, f.type) else { return nil }
+                    r[f.name] = v
+                } else if let def = f.defaultExpr {
+                    var sc: Scopes = [[:]]
+                    guard let v = try? eval(def, &sc) else { return nil }
+                    r[f.name] = v
+                } else { return nil }
+            }
             return .record(r)
         case .optional(let inner):
             if raw is NSNull { return .none }
@@ -379,9 +394,15 @@ public final class Page {
             let selfVal = try eval(recv, &scopes)
             let args = try argExprs.map { try eval($0, &scopes) }
             return try runBody(methods[e.method!]!, ["self": selfVal], args, e, e.method!).ret
-        case .construct(_, let fields):
+        case .construct(let name, let fields):
             var o: [String: Value] = [:]
-            for (n, v, _) in fields { o[n] = try eval(v, &scopes) }
+            var given = Set<String>()
+            for (n, v, _) in fields { o[n] = try eval(v, &scopes); given.insert(n) }
+            if let st = structDecls[name] ?? structDecls[name] { // fill defaults
+                for f in st.fields where !given.contains(f.name) {
+                    if let def = f.defaultExpr { o[f.name] = try eval(def, &scopes) }
+                }
+            }
             return .record(o)
         case .field(let inner, let name):
             if case .record(let r) = try eval(inner, &scopes) { return r[name] ?? .none }
@@ -789,6 +810,20 @@ public final class Page {
                     scopes.append([v: item])
                     defer { scopes.removeLast() }
                     try view(body, &scopes, &out)
+                }
+            case .component(let name, let args):
+                if let c = componentDecls[name] {
+                    var props: [String: Value] = [:]
+                    var given = Set<String>()
+                    for (fname, val, _) in args { props[fname] = try eval(val, &scopes); given.insert(fname) }
+                    if case .structType(let sn) = c.propType, let st = structDecls[sn] {
+                        for f in st.fields where !given.contains(f.name) {
+                            if let def = f.defaultExpr { props[f.name] = try eval(def, &scopes) }
+                        }
+                    }
+                    scopes.append([c.propName: .record(props)])
+                    defer { scopes.removeLast() }
+                    try view(c.body, &scopes, &out)
                 }
             case .link(let label, let target, let act, let mods):
                 var n = RNode(.link)
